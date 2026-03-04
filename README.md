@@ -24,22 +24,21 @@ Projeto Integrador para dispositivos mobiles
 | RNF002                     | React Native              | Utilizar a biblioteca Javascript React Native                             |
 | RNF003                     | Segurança                 | O sistema deve ser protegido contra acessos não autorizados               |
 | RNF004                     | Escalabilidade            | O sistema deve ser capaz de aumentar ou diminuir sua capacidade           |
-| RNF005                     | Velocidade e Eficiência   | O sistema deve responder rápido para aplicativos mobiles, além do back funcionar rápido também |
+| RNF005                     | Velocidade e Eficiência   | O sistema deve responder rápido, no máximo 5 segundos, para aplicativos mobiles, além do back funcionar rápido também |
 | RNF006                     | Disponibilidade           | O sistema deve estar disponível 24h por dia, 7 dias por semana            |
 | RNF007                     | Usabilidade               | Interface intuitiva e fácil de usar, mesmo para iniciantes                |
 | RNF008                     | Confiabilidade            | O sistema deve ser robusto e resistente a falhas                          |
 | RNF009                     | Portabilidade             | Deve funcionar em diversos dispositivos mobiles e Sistemas Operacionais   |
 | RNF010                     | Manutenibilidade          | Código organizado e documentado para facilitar atualizações futuras       |
-| RNF011                     | Baixo consumo de bateria  | O sistema deve consumir a bateria de forma otimizada                      |
-| RNF012                     | Baixo consumo de dados    | O app deve consumir de forma otimizada os dados móveis                    |
-| RNF013                     | Tamanho Reduzido          | O app deve ter um tamanho de armazenamento baixo                          |
+| RNF011                     | Baixo consumo de bateria  | O sistema deve consumir 17% por hora a bateria                      |
+| RNF012                     | Baixo consumo de dados    | O app deve consumir 4MB por hora de dados móveis                 |
+| RNF013                     | Tamanho Reduzido          | O app deve ter um tamanho de armazenamento no máximo 50MB                          |
 
 
 ## 👥 Equipe
 - Breno Jose Da Silva
 - Davy Oliveira Ribeiro
 - Gabriel Ribeiro Correa
-- Guilherme Pazzeti?
 - Herivelton Henrique Gonçalves
 - Pedro Silva Martins
 - Ryan Carlo Negretti Pereira
