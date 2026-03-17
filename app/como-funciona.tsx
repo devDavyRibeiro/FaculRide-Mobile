@@ -11,7 +11,7 @@ import {
 
 export default function ComoFuncionaScreen() {
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top','bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backText}>Voltar</Text>
