@@ -125,10 +125,13 @@ export default function LoginScreen() {
   }
 
   return (
-    <LinearGradient
-      colors={['#0B1B35', '#0B1B35', '#0B1B35']}
-      style={{ flex: 1 }}
-    >
+      <LinearGradient
+          colors={['#0F172A', '#334F90', '#15203A']}
+          locations={[0, 0.5, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{ flex: 1 }}
+      >
       <SafeAreaView style={styles.safe}>
         <ScrollView contentContainerStyle={styles.container}>
           <View style={styles.logoBox}>
@@ -148,7 +151,7 @@ export default function LoginScreen() {
           </Text>
 
           <View style={styles.form}>
-            <Text style={styles.label}>E-mail</Text>
+            <Text style={styles.label}>E-mail :</Text>
             <TextInput
               value={email}
               onChangeText={(text) => {
@@ -161,7 +164,7 @@ export default function LoginScreen() {
             />
             {renderErro('email')}
 
-            <Text style={styles.label}>Senha</Text>
+            <Text style={styles.label}>Senha :</Text>
 
             <View style={[styles.passwordContainer, erros.senha && styles.inputError]}>
               <TextInput
@@ -239,7 +242,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#0F172A',
+    color: '#eef0f4',
   },
   input: {
     backgroundColor: '#FFFFFF',
