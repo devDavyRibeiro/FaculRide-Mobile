@@ -9,7 +9,6 @@ import {
   Alert,
   Image,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type TipoUsuario = 'passageiro' | 'motorista';
 
@@ -60,6 +60,8 @@ export default function CadastroScreen() {
 
   const [fotoUri, setFotoUri] = useState<string | null>(null);
   const [fotoBase64, setFotoBase64] = useState<string | null>(null);
+  const [fotoMimeType, setFotoMimeType] = useState<string | null>(null);
+  const [fotoFileName, setFotoFileName] = useState<string | null>(null);
 
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [carregando, setCarregando] = useState(false);
@@ -73,9 +75,7 @@ export default function CadastroScreen() {
     return Array.from({ length: 30 }, (_, i) => String(anoAtual - i));
   }, []);
 
-  const fatecOptions = [
-    'FATEC Votorantim',
-  ];
+  const fatecOptions = ['FATEC Votorantim'];
 
   const generoOptions = ['Masculino', 'Feminino'];
 
@@ -117,7 +117,7 @@ export default function CadastroScreen() {
   function formatarPlaca(valor: string) {
     return valor.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7);
   }
-  
+
   function validarEmail(valor: string) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
   }
@@ -384,14 +384,16 @@ export default function CadastroScreen() {
       mediaTypes: ['images'],
       allowsEditing: true,
       quality: 0.8,
-      base64: true,
+      base64: false,
     });
 
     if (result.canceled) return;
 
     const asset = result.assets[0];
     setFotoUri(asset.uri);
-    setFotoBase64(asset.base64 ?? null);
+    setFotoBase64(null);
+    setFotoMimeType(asset.mimeType || 'image/jpeg');
+    setFotoFileName(asset.fileName || `foto-perfil.${asset.mimeType?.split('/')[1] || 'jpg'}`);
   }
 
   function validarFormulario() {
@@ -440,21 +442,48 @@ export default function CadastroScreen() {
   }
 
   async function uploadFoto(token: string) {
-    if (!fotoBase64) return;
+    if (!fotoUri) return null;
 
     try {
-      await fetch(`${API_BASE_URL}/api/usuario/foto/upload`, {
+      const formData = new FormData();
+
+      formData.append('file', {
+        uri: fotoUri,
+        name: fotoFileName || 'foto-perfil.jpg',
+        type: fotoMimeType || 'image/jpeg',
+      } as any);
+
+      const response = await fetch(`${API_BASE_URL}/api/usuario/foto/upload`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          imagemBase64: fotoBase64,
-        }),
+        body: formData,
       });
-    } catch {
-      // não bloqueia o cadastro caso a foto falhe
+
+      const responseText = await response.text();
+
+      let data: any = {};
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        data = { raw: responseText };
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            data?.erro ||
+            data?.error ||
+            data?.raw ||
+            'Não foi possível enviar a foto.'
+        );
+      }
+
+      return data;
+    } catch (error) {
+      console.log('ERRO UPLOAD FOTO:', error);
+      return null;
     }
   }
 
@@ -465,15 +494,28 @@ export default function CadastroScreen() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        email: email.trim(),
+        email: email.trim().toLowerCase(),
         senha,
       }),
     });
 
-    const data = await response.json();
+    const responseText = await response.text();
+
+    let data: any = {};
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      data = { raw: responseText };
+    }
 
     if (!response.ok) {
-      throw new Error(data?.message || 'Não foi possível fazer login automaticamente.');
+      throw new Error(
+        data?.message ||
+          data?.erro ||
+          data?.error ||
+          data?.raw ||
+          'Não foi possível fazer login automaticamente.'
+      );
     }
 
     const token = data?.token ?? data?.accessToken ?? '';
@@ -484,6 +526,7 @@ export default function CadastroScreen() {
     }
 
     await AsyncStorage.setItem('usuario', JSON.stringify(usuario));
+    await AsyncStorage.setItem('usuarioLogado', JSON.stringify(usuario));
 
     return { token, usuario };
   }
@@ -560,17 +603,32 @@ export default function CadastroScreen() {
         );
       }
 
+      const { token, usuario } = await fazerLoginAutomatico();
+
+      let usuarioFinal = usuario;
+
+      if (token && fotoUri) {
+        const retornoFoto = await uploadFoto(token);
+
+        if (retornoFoto) {
+          usuarioFinal = {
+            ...usuario,
+            fotoUrl: retornoFoto?.fotoUrl ?? usuario?.fotoUrl ?? null,
+            fotoPath: retornoFoto?.fotoPath ?? usuario?.fotoPath ?? null,
+            foto: retornoFoto?.fotoUrl ?? usuario?.foto ?? null,
+          };
+
+          await AsyncStorage.setItem('usuario', JSON.stringify(usuarioFinal));
+          await AsyncStorage.setItem('usuarioLogado', JSON.stringify(usuarioFinal));
+        }
+      }
+
       Alert.alert('Cadastro realizado', 'Sua conta foi criada com sucesso.', [
         {
           text: 'OK',
-          onPress: () =>
-            router.replace({
-              pathname: '/(auth)/login',
-              params: { email: email.trim().toLowerCase() },
-            }),
+          onPress: () => router.replace('/(tabs)'),
         },
       ]);
-
     } catch (error: any) {
       console.log('ERRO COMPLETO CADASTRO:', error);
       Alert.alert('Erro no cadastro', error?.message || 'Ocorreu um erro ao cadastrar.');
@@ -627,7 +685,7 @@ export default function CadastroScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backButtonText}>← Voltar</Text>
