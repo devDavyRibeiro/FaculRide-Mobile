@@ -32,7 +32,8 @@ Projeto Integrador para dispositivos mobiles
 | RNF010                     | Manutenibilidade          | Código organizado e documentado para facilitar atualizações futuras       |
 | RNF011                     | Baixo consumo de bateria  | O sistema deve consumir 17% por hora a bateria                      |
 | RNF012                     | Baixo consumo de dados    | O app deve consumir 4MB por hora de dados móveis                 |
-| RNF013                     | Tamanho Reduzido          | O app deve ter um tamanho de armazenamento no máximo 50MB                          |
+| RNF013                     | Tamanho Reduzido          | O app deve ter um tamanho de armazenamento no máximo 50MB                          |  
+| RNF014                     | Armazenamento de Imagens  | O app irá utilziar o serviço S3 da AWS para armazenar as imagens de perfil e CNH dos usuários |
 
 
 ## 👥 Equipe
