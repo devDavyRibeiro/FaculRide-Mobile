@@ -198,6 +198,10 @@ export default function LoginScreen() {
                 <Text style={styles.primaryButtonText}>Entrar</Text>
               )}
             </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => router.push('/cadastro')}>
+              <Text style={styles.secondaryButton}>Não possui uma conta? Cadastre-se</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -229,9 +233,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     textAlign: 'center',
+    marginBottom:15
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 20,
     color: '#FFFFFF',
     textAlign: 'center',
     marginBottom: 28,
@@ -259,10 +264,12 @@ const styles = StyleSheet.create({
     borderColor: '#CBD5E1',
     borderRadius: 14,
     paddingHorizontal: 12,
+
   },
   passwordInput: {
     flex: 1,
     color: '#0F172A',
+    paddingVertical: 14,
   },
   showPasswordText: {
     color: '#0B1B35',
@@ -274,6 +281,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     marginTop: 10,
+    marginLeft: 70,
+    marginRight:70
   },
   primaryButtonText: {
     color: '#fff',
@@ -287,5 +296,12 @@ const styles = StyleSheet.create({
   },
   inputError: {
     borderColor: '#DC2626',
+  },
+   secondaryButton: {
+    fontSize: 20,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 28,
+    marginTop: 15
   },
 });
