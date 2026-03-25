@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const API_BASE_URL = 'https://projeto-faculride.onrender.com';
 
@@ -132,7 +132,7 @@ export default function LoginScreen() {
           end={{ x: 1, y: 0 }}
           style={{ flex: 1 }}
       >
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={['top','bottom']} >
         <ScrollView contentContainerStyle={styles.container}>
           <View style={styles.logoBox}>
             <Image
