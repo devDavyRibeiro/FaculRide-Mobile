@@ -1,13 +1,13 @@
 import { router } from 'expo-router';
 import {
   Image,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const devs = [
   { nome: 'Anthonny Cocuzza', foto: require('../assets/images/team/anthonny.jpeg') },
@@ -23,7 +23,7 @@ const devs = [
 
 export default function DevsScreen() {
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backText}>Voltar</Text>
@@ -59,9 +59,8 @@ const styles = StyleSheet.create({
 
   backButton: {
     paddingHorizontal: 20,
-    paddingTop: 32,
+    paddingTop: 16,
     paddingBottom: 12,
-    marginTop: 10,
     backgroundColor: '#F8FAFC',
   },
 
