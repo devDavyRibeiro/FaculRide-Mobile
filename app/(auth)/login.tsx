@@ -150,6 +150,7 @@ export default function LoginScreen() {
       }
 
       await AsyncStorage.setItem('usuario', JSON.stringify(usuario));
+      await AsyncStorage.setItem('usuarioLogado', JSON.stringify(usuario));
 
       router.replace('/(tabs)');
     } catch (error: any) {
