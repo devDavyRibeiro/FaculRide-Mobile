@@ -110,6 +110,7 @@ export default function LoginScreen() {
 
       if (token) await AsyncStorage.setItem('token', token);
       await AsyncStorage.setItem('usuario', JSON.stringify(usuario));
+      await AsyncStorage.setItem('usuarioLogado', JSON.stringify(usuario));
 
       router.replace('/(tabs)');
     } catch (error: any) {
@@ -125,33 +126,42 @@ export default function LoginScreen() {
   }
 
   return (
-      <LinearGradient
-          colors={['#0F172A', '#334F90', '#15203A']}
-          locations={[0, 0.5, 1]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={{ flex: 1 }}
-      >
-      <SafeAreaView style={styles.safe} edges={['top','bottom']} >
-        <ScrollView contentContainerStyle={styles.container}>
-          <View style={styles.logoBox}>
-            <Image
-              source={require('../../assets/images/logo-faculride-white.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-          </View>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <View style={styles.logoBox}>
+          <Image
+            source={require('../../assets/images/logo-faculride-white.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </View>
 
-          <Text style={styles.title}>Entre no FaculRide</Text>
+        <Text style={styles.title}>Entre no FaculRide</Text>
+        <Text style={styles.subtitle}>
+          Conecte-se.{"\n"}
+          Compartilhe.{"\n"}
+          Vá mais longe com o FaculRide.
+        </Text>
 
-          <Text style={styles.subtitle}>
-            Conecte-se.{"\n"}
-            Compartilhe.{"\n"}
-            Vá mais longe com o FaculRide.
-          </Text>
+        <View style={styles.form}>
+          <Text style={styles.label}>E-mail</Text>
+          <TextInput
+            value={email}
+            onChangeText={(text) => {
+              setEmail(text);
+              validarCampoTempoReal('email', text);
+            }}
+            placeholder="Digite seu e-mail"
+            placeholderTextColor="#94A3B8"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            style={[styles.input, erros.email && styles.inputError]}
+          />
+          {renderErro('email')}
 
-          <View style={styles.form}>
-            <Text style={styles.label}>E-mail :</Text>
+          <Text style={styles.label}>Senha</Text>
+
+          <View style={[styles.passwordContainer, erros.senha && styles.inputError]}>
             <TextInput
               value={email}
               onChangeText={(text) => {

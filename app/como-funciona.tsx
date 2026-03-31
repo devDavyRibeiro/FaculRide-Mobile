@@ -1,13 +1,13 @@
 import { router } from 'expo-router';
 import {
   Image,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ComoFuncionaScreen() {
   return (
@@ -70,9 +70,8 @@ const styles = StyleSheet.create({
 
   backButton: {
     paddingHorizontal: 20,
-    paddingTop: 32,
+    paddingTop: 16,
     paddingBottom: 12,
-    marginTop: 10,
     backgroundColor: '#1E293B',
   },
 
