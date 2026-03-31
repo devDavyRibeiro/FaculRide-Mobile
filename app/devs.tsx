@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+
 const devs = [
   { nome: 'Anthonny Cocuzza', foto: require('../assets/images/team/anthonny.jpeg') },
   { nome: 'Breno Silva', foto: require('../assets/images/team/breno.jpeg') },
@@ -23,7 +24,7 @@ const devs = [
 
 export default function DevsScreen() {
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={['top','bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backText}>Voltar</Text>
