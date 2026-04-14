@@ -8,13 +8,14 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -686,452 +687,462 @@ export default function CadastroScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backButtonText}>← Voltar</Text>
-        </TouchableOpacity>
-
-        <View style={styles.logoBox}>
-          <Image
-            source={require('../../assets/images/logo-faculride-white.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </View>
-
-        <Text style={styles.title}>Criar conta</Text>
-        <Text style={styles.subtitle}>
-          Preencha os dados abaixo para entrar no FaculRide.
-        </Text>
-
-        <View style={styles.formCard}>
-          <Text style={styles.sectionTitle}>Tipo de usuário</Text>
-
-          <View style={styles.segmentedRow}>
-            <TouchableOpacity
-              style={[
-                styles.segmentButton,
-                tipoUsuario === 'passageiro' && styles.segmentButtonActive,
-              ]}
-              onPress={() => aoTrocarTipoUsuario('passageiro')}
-            >
-              <Text
-                style={[
-                  styles.segmentButtonText,
-                  tipoUsuario === 'passageiro' && styles.segmentButtonTextActive,
-                ]}
-              >
-                Passageiro
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.segmentButton,
-                tipoUsuario === 'motorista' && styles.segmentButtonActive,
-              ]}
-              onPress={() => aoTrocarTipoUsuario('motorista')}
-            >
-              <Text
-                style={[
-                  styles.segmentButtonText,
-                  tipoUsuario === 'motorista' && styles.segmentButtonTextActive,
-                ]}
-              >
-                Motorista
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.label}>Foto de perfil (opcional)</Text>
-          <TouchableOpacity style={styles.photoButton} onPress={escolherFoto}>
-            <Text style={styles.photoButtonText}>
-              {fotoUri ? 'Trocar foto' : 'Selecionar foto'}
-            </Text>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={styles.container}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Text style={styles.backButtonText}>← Voltar</Text>
           </TouchableOpacity>
 
-          {fotoUri ? <Image source={{ uri: fotoUri }} style={styles.photoPreview} /> : null}
-
-          <Text style={styles.label}>Nome completo</Text>
-          <TextInput
-            style={[styles.input, erros.nome && styles.inputError]}
-            value={nome}
-            onChangeText={(text) => {
-              setNome(text);
-              marcarComoTocado('nome');
-              validarCampoTempoReal('nome', text);
-            }}
-            placeholder="Digite seu nome completo"
-            placeholderTextColor="#94A3B8"
-          />
-          {renderErro('nome')}
-
-          <Text style={styles.label}>CPF</Text>
-          <TextInput
-            style={[styles.input, erros.cpf && styles.inputError]}
-            value={cpf}
-            onChangeText={(text) => {
-              const valorFormatado = formatarCPF(text);
-              setCpf(valorFormatado);
-              marcarComoTocado('cpf');
-              validarCampoTempoReal('cpf', valorFormatado);
-            }}
-            placeholder="000.000.000-00"
-            placeholderTextColor="#94A3B8"
-            keyboardType="number-pad"
-          />
-          {renderErro('cpf')}
-
-          <Text style={styles.label}>E-mail</Text>
-          <TextInput
-            style={[styles.input, erros.email && styles.inputError]}
-            value={email}
-            onChangeText={(text) => {
-              setEmail(text);
-              marcarComoTocado('email');
-              validarCampoTempoReal('email', text);
-            }}
-            placeholder="Digite seu e-mail"
-            placeholderTextColor="#94A3B8"
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-          {renderErro('email')}
-
-          <Text style={styles.label}>Telefone</Text>
-          <TextInput
-            style={[styles.input, erros.telefone && styles.inputError]}
-            value={telefone}
-            onChangeText={(text) => {
-              const valorFormatado = formatarTelefone(text);
-              setTelefone(valorFormatado);
-              marcarComoTocado('telefone');
-              validarCampoTempoReal('telefone', valorFormatado);
-            }}
-            placeholder="(15) 99999-9999"
-            placeholderTextColor="#94A3B8"
-            keyboardType="phone-pad"
-          />
-          {renderErro('telefone')}
-
-          <Text style={styles.label}>CEP</Text>
-          <TextInput
-            style={[styles.input, erros.cep && styles.inputError]}
-            value={cep}
-            onChangeText={(text) => {
-              const valorFormatado = formatarCEP(text);
-              setCep(valorFormatado);
-              marcarComoTocado('cep');
-              validarCampoTempoReal('cep', valorFormatado);
-
-              const cepLimpo = limparNumero(valorFormatado);
-              if (cepLimpo.length === 8) {
-                buscarCep(cepLimpo);
-              }
-            }}
-            placeholder="00000-000"
-            placeholderTextColor="#94A3B8"
-            keyboardType="number-pad"
-          />
-          {buscandoCep ? <ActivityIndicator size="small" style={styles.cepLoader} /> : null}
-          {renderErro('cep')}
-
-          <Text style={styles.label}>Endereço</Text>
-          <TextInput
-            style={[styles.input, erros.endereco && styles.inputError]}
-            value={endereco}
-            onChangeText={(text) => {
-              setEndereco(text);
-              marcarComoTocado('endereco');
-              validarCampoTempoReal('endereco', text);
-            }}
-            placeholder="Rua, avenida..."
-            placeholderTextColor="#94A3B8"
-          />
-          {renderErro('endereco')}
-
-          <Text style={styles.label}>Número</Text>
-          <TextInput
-            style={[styles.input, erros.numero && styles.inputError]}
-            value={numero}
-            onChangeText={(text) => {
-              setNumero(text);
-              marcarComoTocado('numero');
-              validarCampoTempoReal('numero', text);
-            }}
-            placeholder="Número"
-            placeholderTextColor="#94A3B8"
-            keyboardType="default"
-          />
-          {renderErro('numero')}
-
-          <Text style={styles.label}>Cidade</Text>
-          <TextInput
-            style={[styles.input, erros.cidade && styles.inputError]}
-            value={cidade}
-            onChangeText={(text) => {
-              setCidade(text);
-              marcarComoTocado('cidade');
-              validarCampoTempoReal('cidade', text);
-            }}
-            placeholder="Cidade"
-            placeholderTextColor="#94A3B8"
-          />
-          {renderErro('cidade')}
-
-          <Text style={styles.label}>Estado</Text>
-          <TextInput
-            style={[styles.input, erros.estado && styles.inputError]}
-            value={estado}
-            onChangeText={(text) => {
-              const valor = text.toUpperCase().slice(0, 2);
-              setEstado(valor);
-              marcarComoTocado('estado');
-              validarCampoTempoReal('estado', valor);
-            }}
-            placeholder="UF"
-            placeholderTextColor="#94A3B8"
-            maxLength={2}
-            autoCapitalize="characters"
-          />
-          {renderErro('estado')}
-
-          <Text style={styles.label}>Sua Fatec</Text>
-          <View style={[styles.selectWrapper, erros.fatec && styles.inputError]}>
-            <Picker
-              selectedValue={fatec}
-              onValueChange={(itemValue) => {
-                setFatec(itemValue);
-                marcarComoTocado('fatec');
-                validarCampoTempoReal('fatec', itemValue);
-              }}
-              style={styles.picker}
-              dropdownIconColor="#0F172A"
-            >
-              <Picker.Item label="Selecione" value="" color="#64748B" />
-              {fatecOptions.map((item) => (
-                <Picker.Item key={item} label={item} value={item} />
-              ))}
-            </Picker>
-          </View>
-          {renderErro('fatec')}
-
-          <Text style={styles.label}>RA</Text>
-          <TextInput
-            style={[styles.input, erros.ra && styles.inputError]}
-            value={ra}
-            onChangeText={(text) => {
-              setRa(text);
-              marcarComoTocado('ra');
-              validarCampoTempoReal('ra', text);
-            }}
-            placeholder="Digite seu RA"
-            placeholderTextColor="#94A3B8"
-            keyboardType="number-pad"
-          />
-          {renderErro('ra')}
-
-          <Text style={styles.label}>Gênero</Text>
-          <View style={[styles.selectWrapper, erros.genero && styles.inputError]}>
-            <Picker
-              selectedValue={genero}
-              onValueChange={(itemValue) => {
-                setGenero(itemValue);
-                marcarComoTocado('genero');
-                validarCampoTempoReal('genero', itemValue);
-              }}
-              style={styles.picker}
-              dropdownIconColor="#0F172A"
-            >
-              <Picker.Item label="Selecione" value="" color="#64748B" />
-              {generoOptions.map((item) => (
-                <Picker.Item key={item} label={item} value={item} />
-              ))}
-            </Picker>
-          </View>
-          {renderErro('genero')}
-
-          <Text style={styles.label}>Data de nascimento</Text>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={[styles.dateInputButton, erros.dataNascimento && styles.inputError]}
-            onPress={() => setMostrarDatePicker(true)}
-          >
-            <Text style={dataNascimento ? styles.dateInputText : styles.datePlaceholderText}>
-              {dataNascimento || 'dd/mm/aaaa'}
-            </Text>
-            <Text style={styles.dateIcon}>🗓️</Text>
-          </TouchableOpacity>
-          {renderErro('dataNascimento')}
-
-          {mostrarDatePicker && (
-            <DateTimePicker
-              value={dataSelecionada}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              maximumDate={new Date()}
-              onChange={onChangeDate}
+          <View style={styles.logoBox}>
+            <Image
+              source={require('../../assets/images/logo-faculride-white.png')}
+              style={styles.logo}
+              resizeMode="contain"
             />
-          )}
-
-          {tipoUsuario === 'motorista' && (
-            <>
-              <Text style={styles.sectionTitle}>Dados do veículo</Text>
-
-              <Text style={styles.label}>CNH</Text>
-              <TextInput
-                style={[styles.input, erros.cnh && styles.inputError]}
-                value={cnh}
-                onChangeText={(text) => {
-                  const valorFormatado = formatarCNH(text);
-                  setCnh(valorFormatado);
-                  marcarComoTocado('cnh');
-                  validarCampoTempoReal('cnh', valorFormatado);
-                }}
-                placeholder="Digite sua CNH"
-                placeholderTextColor="#94A3B8"
-                keyboardType="number-pad"
-              />
-              {renderErro('cnh')}
-
-              <Text style={styles.label}>Modelo do carro</Text>
-              <TextInput
-                style={[styles.input, erros.modeloCarro && styles.inputError]}
-                value={modeloCarro}
-                onChangeText={(text) => {
-                  setModeloCarro(text);
-                  marcarComoTocado('modeloCarro');
-                  validarCampoTempoReal('modeloCarro', text);
-                }}
-                placeholder="Ex: HB20"
-                placeholderTextColor="#94A3B8"
-              />
-              {renderErro('modeloCarro')}
-
-              <Text style={styles.label}>Ano do carro</Text>
-              <TextInput
-                style={[styles.input, erros.anoCarro && styles.inputError]}
-                value={anoCarro}
-                onChangeText={(text) => {
-                  const apenasNumero = limparNumero(text).slice(0, 4);
-                  setAnoCarro(apenasNumero);
-                  marcarComoTocado('anoCarro');
-                  validarCampoTempoReal('anoCarro', apenasNumero);
-                }}
-                placeholder={anosCarro[0]}
-                placeholderTextColor="#94A3B8"
-                keyboardType="number-pad"
-                maxLength={4}
-              />
-              {renderErro('anoCarro')}
-
-              <Text style={styles.label}>Cor do carro</Text>
-              <TextInput
-                style={[styles.input, erros.corCarro && styles.inputError]}
-                value={corCarro}
-                onChangeText={(text) => {
-                  setCorCarro(text);
-                  marcarComoTocado('corCarro');
-                  validarCampoTempoReal('corCarro', text);
-                }}
-                placeholder="Ex: Preto"
-                placeholderTextColor="#94A3B8"
-              />
-              {renderErro('corCarro')}
-
-              <Text style={styles.label}>Placa</Text>
-              <TextInput
-                style={[styles.input, erros.placa && styles.inputError]}
-                value={placa}
-                onChangeText={(text) => {
-                  const valorFormatado = formatarPlaca(text);
-                  setPlaca(valorFormatado);
-                  marcarComoTocado('placa');
-                  validarCampoTempoReal('placa', valorFormatado);
-                }}
-                placeholder="ABC1234"
-                placeholderTextColor="#94A3B8"
-                autoCapitalize="characters"
-                maxLength={7}
-              />
-              {renderErro('placa')}
-            </>
-          )}
-
-          <Text style={styles.sectionTitle}>Senha de acesso</Text>
-
-          <Text style={styles.label}>Senha</Text>
-          <View style={[styles.passwordContainer, erros.senha && styles.inputError]}>
-            <TextInput
-              value={senha}
-              onChangeText={(text) => {
-                setSenha(text);
-                marcarComoTocado('senha');
-                validarCampoTempoReal('senha', text);
-
-                if (touched.repetirSenha || repetirSenha) {
-                  validarCampoTempoReal('repetirSenha', repetirSenha);
-                }
-              }}
-              placeholder="Digite sua senha"
-              placeholderTextColor="#94A3B8"
-              secureTextEntry={!mostrarSenha}
-              style={styles.passwordInput}
-            />
-            <TouchableOpacity onPress={() => setMostrarSenha(!mostrarSenha)}>
-              <Text style={styles.showPasswordText}>
-                {mostrarSenha ? 'Ocultar' : 'Mostrar'}
-              </Text>
-            </TouchableOpacity>
           </View>
-          {renderErro('senha')}
 
-          <Text style={styles.passwordHint}>
-            A senha deve ter no mínimo 6 caracteres, 1 letra minúscula, 1 maiúscula, 1 número e 1 caractere especial.
+          <Text style={styles.title}>Criar conta</Text>
+          <Text style={styles.subtitle}>
+            Preencha os dados abaixo para entrar no FaculRide.
           </Text>
 
-          <Text style={styles.label}>Repetir senha</Text>
-          <View style={[styles.passwordContainer, erros.repetirSenha && styles.inputError]}>
-            <TextInput
-              value={repetirSenha}
-              onChangeText={(text) => {
-                setRepetirSenha(text);
-                marcarComoTocado('repetirSenha');
-                validarCampoTempoReal('repetirSenha', text);
-              }}
-              placeholder="Repita sua senha"
-              placeholderTextColor="#94A3B8"
-              secureTextEntry={!mostrarRepetirSenha}
-              style={styles.passwordInput}
-            />
-            <TouchableOpacity onPress={() => setMostrarRepetirSenha(!mostrarRepetirSenha)}>
-              <Text style={styles.showPasswordText}>
-                {mostrarRepetirSenha ? 'Ocultar' : 'Mostrar'}
+          <View style={styles.formCard}>
+            <Text style={styles.sectionTitle}>Tipo de usuário</Text>
+
+            <View style={styles.segmentedRow}>
+              <TouchableOpacity
+                style={[
+                  styles.segmentButton,
+                  tipoUsuario === 'passageiro' && styles.segmentButtonActive,
+                ]}
+                onPress={() => aoTrocarTipoUsuario('passageiro')}
+              >
+                <Text
+                  style={[
+                    styles.segmentButtonText,
+                    tipoUsuario === 'passageiro' && styles.segmentButtonTextActive,
+                  ]}
+                >
+                  Passageiro
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.segmentButton,
+                  tipoUsuario === 'motorista' && styles.segmentButtonActive,
+                ]}
+                onPress={() => aoTrocarTipoUsuario('motorista')}
+              >
+                <Text
+                  style={[
+                    styles.segmentButtonText,
+                    tipoUsuario === 'motorista' && styles.segmentButtonTextActive,
+                  ]}
+                >
+                  Motorista
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.label}>Foto de perfil (opcional)</Text>
+            <TouchableOpacity style={styles.photoButton} onPress={escolherFoto}>
+              <Text style={styles.photoButtonText}>
+                {fotoUri ? 'Trocar foto' : 'Selecionar foto'}
               </Text>
             </TouchableOpacity>
-          </View>
-          {renderErro('repetirSenha')}
 
-          <TouchableOpacity
-            style={[styles.primaryButton, carregando && styles.buttonDisabled]}
-            onPress={cadastrar}
-            disabled={carregando}
-          >
-            {carregando ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.primaryButtonText}>Cadastrar</Text>
+            {fotoUri ? <Image source={{ uri: fotoUri }} style={styles.photoPreview} /> : null}
+
+            <Text style={styles.label}>Nome completo</Text>
+            <TextInput
+              style={[styles.input, erros.nome && styles.inputError]}
+              value={nome}
+              onChangeText={(text) => {
+                setNome(text);
+                marcarComoTocado('nome');
+                validarCampoTempoReal('nome', text);
+              }}
+              placeholder="Digite seu nome completo"
+              placeholderTextColor="#94A3B8"
+            />
+            {renderErro('nome')}
+
+            <Text style={styles.label}>CPF</Text>
+            <TextInput
+              style={[styles.input, erros.cpf && styles.inputError]}
+              value={cpf}
+              onChangeText={(text) => {
+                const valorFormatado = formatarCPF(text);
+                setCpf(valorFormatado);
+                marcarComoTocado('cpf');
+                validarCampoTempoReal('cpf', valorFormatado);
+              }}
+              placeholder="000.000.000-00"
+              placeholderTextColor="#94A3B8"
+              keyboardType="number-pad"
+            />
+            {renderErro('cpf')}
+
+            <Text style={styles.label}>E-mail</Text>
+            <TextInput
+              style={[styles.input, erros.email && styles.inputError]}
+              value={email}
+              onChangeText={(text) => {
+                setEmail(text);
+                marcarComoTocado('email');
+                validarCampoTempoReal('email', text);
+              }}
+              placeholder="Digite seu e-mail"
+              placeholderTextColor="#94A3B8"
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            {renderErro('email')}
+
+            <Text style={styles.label}>Telefone</Text>
+            <TextInput
+              style={[styles.input, erros.telefone && styles.inputError]}
+              value={telefone}
+              onChangeText={(text) => {
+                const valorFormatado = formatarTelefone(text);
+                setTelefone(valorFormatado);
+                marcarComoTocado('telefone');
+                validarCampoTempoReal('telefone', valorFormatado);
+              }}
+              placeholder="(15) 99999-9999"
+              placeholderTextColor="#94A3B8"
+              keyboardType="phone-pad"
+            />
+            {renderErro('telefone')}
+
+            <Text style={styles.label}>CEP</Text>
+            <TextInput
+              style={[styles.input, erros.cep && styles.inputError]}
+              value={cep}
+              onChangeText={(text) => {
+                const valorFormatado = formatarCEP(text);
+                setCep(valorFormatado);
+                marcarComoTocado('cep');
+                validarCampoTempoReal('cep', valorFormatado);
+
+                const cepLimpo = limparNumero(valorFormatado);
+                if (cepLimpo.length === 8) {
+                  buscarCep(cepLimpo);
+                }
+              }}
+              placeholder="00000-000"
+              placeholderTextColor="#94A3B8"
+              keyboardType="number-pad"
+            />
+            {buscandoCep ? <ActivityIndicator size="small" style={styles.cepLoader} /> : null}
+            {renderErro('cep')}
+
+            <Text style={styles.label}>Endereço</Text>
+            <TextInput
+              style={[styles.input, erros.endereco && styles.inputError]}
+              value={endereco}
+              onChangeText={(text) => {
+                setEndereco(text);
+                marcarComoTocado('endereco');
+                validarCampoTempoReal('endereco', text);
+              }}
+              placeholder="Rua, avenida..."
+              placeholderTextColor="#94A3B8"
+            />
+            {renderErro('endereco')}
+
+            <Text style={styles.label}>Número</Text>
+            <TextInput
+              style={[styles.input, erros.numero && styles.inputError]}
+              value={numero}
+              onChangeText={(text) => {
+                setNumero(text);
+                marcarComoTocado('numero');
+                validarCampoTempoReal('numero', text);
+              }}
+              placeholder="Número"
+              placeholderTextColor="#94A3B8"
+              keyboardType="default"
+            />
+            {renderErro('numero')}
+
+            <Text style={styles.label}>Cidade</Text>
+            <TextInput
+              style={[styles.input, erros.cidade && styles.inputError]}
+              value={cidade}
+              onChangeText={(text) => {
+                setCidade(text);
+                marcarComoTocado('cidade');
+                validarCampoTempoReal('cidade', text);
+              }}
+              placeholder="Cidade"
+              placeholderTextColor="#94A3B8"
+            />
+            {renderErro('cidade')}
+
+            <Text style={styles.label}>Estado</Text>
+            <TextInput
+              style={[styles.input, erros.estado && styles.inputError]}
+              value={estado}
+              onChangeText={(text) => {
+                const valor = text.toUpperCase().slice(0, 2);
+                setEstado(valor);
+                marcarComoTocado('estado');
+                validarCampoTempoReal('estado', valor);
+              }}
+              placeholder="UF"
+              placeholderTextColor="#94A3B8"
+              maxLength={2}
+              autoCapitalize="characters"
+            />
+            {renderErro('estado')}
+
+            <Text style={styles.label}>Sua Fatec</Text>
+            <View style={[styles.selectWrapper, erros.fatec && styles.inputError]}>
+              <Picker
+                selectedValue={fatec}
+                onValueChange={(itemValue) => {
+                  setFatec(itemValue);
+                  marcarComoTocado('fatec');
+                  validarCampoTempoReal('fatec', itemValue);
+                }}
+                style={styles.picker}
+                dropdownIconColor="#0F172A"
+              >
+                <Picker.Item label="Selecione" value="" color="#64748B" />
+                {fatecOptions.map((item) => (
+                  <Picker.Item key={item} label={item} value={item} />
+                ))}
+              </Picker>
+            </View>
+            {renderErro('fatec')}
+
+            <Text style={styles.label}>RA</Text>
+            <TextInput
+              style={[styles.input, erros.ra && styles.inputError]}
+              value={ra}
+              onChangeText={(text) => {
+                setRa(text);
+                marcarComoTocado('ra');
+                validarCampoTempoReal('ra', text);
+              }}
+              placeholder="Digite seu RA"
+              placeholderTextColor="#94A3B8"
+              keyboardType="number-pad"
+            />
+            {renderErro('ra')}
+
+            <Text style={styles.label}>Gênero</Text>
+            <View style={[styles.selectWrapper, erros.genero && styles.inputError]}>
+              <Picker
+                selectedValue={genero}
+                onValueChange={(itemValue) => {
+                  setGenero(itemValue);
+                  marcarComoTocado('genero');
+                  validarCampoTempoReal('genero', itemValue);
+                }}
+                style={styles.picker}
+                dropdownIconColor="#0F172A"
+              >
+                <Picker.Item label="Selecione" value="" color="#64748B" />
+                {generoOptions.map((item) => (
+                  <Picker.Item key={item} label={item} value={item} />
+                ))}
+              </Picker>
+            </View>
+            {renderErro('genero')}
+
+            <Text style={styles.label}>Data de nascimento</Text>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={[styles.dateInputButton, erros.dataNascimento && styles.inputError]}
+              onPress={() => setMostrarDatePicker(true)}
+            >
+              <Text style={dataNascimento ? styles.dateInputText : styles.datePlaceholderText}>
+                {dataNascimento || 'dd/mm/aaaa'}
+              </Text>
+              <Text style={styles.dateIcon}>🗓️</Text>
+            </TouchableOpacity>
+            {renderErro('dataNascimento')}
+
+            {mostrarDatePicker && (
+              <DateTimePicker
+                value={dataSelecionada}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                maximumDate={new Date()}
+                onChange={onChangeDate}
+              />
             )}
-          </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => router.push('/(auth)/login')}
-          >
-            <Text style={styles.secondaryButtonText}>Já tenho conta</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+            {tipoUsuario === 'motorista' && (
+              <>
+                <Text style={styles.sectionTitle}>Dados do veículo</Text>
+
+                <Text style={styles.label}>CNH</Text>
+                <TextInput
+                  style={[styles.input, erros.cnh && styles.inputError]}
+                  value={cnh}
+                  onChangeText={(text) => {
+                    const valorFormatado = formatarCNH(text);
+                    setCnh(valorFormatado);
+                    marcarComoTocado('cnh');
+                    validarCampoTempoReal('cnh', valorFormatado);
+                  }}
+                  placeholder="Digite sua CNH"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="number-pad"
+                />
+                {renderErro('cnh')}
+
+                <Text style={styles.label}>Modelo do carro</Text>
+                <TextInput
+                  style={[styles.input, erros.modeloCarro && styles.inputError]}
+                  value={modeloCarro}
+                  onChangeText={(text) => {
+                    setModeloCarro(text);
+                    marcarComoTocado('modeloCarro');
+                    validarCampoTempoReal('modeloCarro', text);
+                  }}
+                  placeholder="Ex: HB20"
+                  placeholderTextColor="#94A3B8"
+                />
+                {renderErro('modeloCarro')}
+
+                <Text style={styles.label}>Ano do carro</Text>
+                <TextInput
+                  style={[styles.input, erros.anoCarro && styles.inputError]}
+                  value={anoCarro}
+                  onChangeText={(text) => {
+                    const apenasNumero = limparNumero(text).slice(0, 4);
+                    setAnoCarro(apenasNumero);
+                    marcarComoTocado('anoCarro');
+                    validarCampoTempoReal('anoCarro', apenasNumero);
+                  }}
+                  placeholder={anosCarro[0]}
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="number-pad"
+                  maxLength={4}
+                />
+                {renderErro('anoCarro')}
+
+                <Text style={styles.label}>Cor do carro</Text>
+                <TextInput
+                  style={[styles.input, erros.corCarro && styles.inputError]}
+                  value={corCarro}
+                  onChangeText={(text) => {
+                    setCorCarro(text);
+                    marcarComoTocado('corCarro');
+                    validarCampoTempoReal('corCarro', text);
+                  }}
+                  placeholder="Ex: Preto"
+                  placeholderTextColor="#94A3B8"
+                />
+                {renderErro('corCarro')}
+
+                <Text style={styles.label}>Placa</Text>
+                <TextInput
+                  style={[styles.input, erros.placa && styles.inputError]}
+                  value={placa}
+                  onChangeText={(text) => {
+                    const valorFormatado = formatarPlaca(text);
+                    setPlaca(valorFormatado);
+                    marcarComoTocado('placa');
+                    validarCampoTempoReal('placa', valorFormatado);
+                  }}
+                  placeholder="ABC1234"
+                  placeholderTextColor="#94A3B8"
+                  autoCapitalize="characters"
+                  maxLength={7}
+                />
+                {renderErro('placa')}
+              </>
+            )}
+
+            <Text style={styles.sectionTitle}>Senha de acesso</Text>
+
+            <Text style={styles.label}>Senha</Text>
+            <View style={[styles.passwordContainer, erros.senha && styles.inputError]}>
+              <TextInput
+                value={senha}
+                onChangeText={(text) => {
+                  setSenha(text);
+                  marcarComoTocado('senha');
+                  validarCampoTempoReal('senha', text);
+
+                  if (touched.repetirSenha || repetirSenha) {
+                    validarCampoTempoReal('repetirSenha', repetirSenha);
+                  }
+                }}
+                placeholder="Digite sua senha"
+                placeholderTextColor="#94A3B8"
+                secureTextEntry={!mostrarSenha}
+                style={styles.passwordInput}
+              />
+              <TouchableOpacity onPress={() => setMostrarSenha(!mostrarSenha)}>
+                <Text style={styles.showPasswordText}>
+                  {mostrarSenha ? 'Ocultar' : 'Mostrar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {renderErro('senha')}
+
+            <Text style={styles.passwordHint}>
+              A senha deve ter no mínimo 6 caracteres, 1 letra minúscula, 1 maiúscula, 1 número e 1 caractere especial.
+            </Text>
+
+            <Text style={styles.label}>Repetir senha</Text>
+            <View style={[styles.passwordContainer, erros.repetirSenha && styles.inputError]}>
+              <TextInput
+                value={repetirSenha}
+                onChangeText={(text) => {
+                  setRepetirSenha(text);
+                  marcarComoTocado('repetirSenha');
+                  validarCampoTempoReal('repetirSenha', text);
+                }}
+                placeholder="Repita sua senha"
+                placeholderTextColor="#94A3B8"
+                secureTextEntry={!mostrarRepetirSenha}
+                style={styles.passwordInput}
+              />
+              <TouchableOpacity onPress={() => setMostrarRepetirSenha(!mostrarRepetirSenha)}>
+                <Text style={styles.showPasswordText}>
+                  {mostrarRepetirSenha ? 'Ocultar' : 'Mostrar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {renderErro('repetirSenha')}
+
+            <TouchableOpacity
+              style={[styles.primaryButton, carregando && styles.buttonDisabled]}
+              onPress={cadastrar}
+              disabled={carregando}
+            >
+              {carregando ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Cadastrar</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => router.push('/(auth)/login')}
+            >
+              <Text style={styles.secondaryButtonText}>Já tenho conta</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -1141,10 +1152,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   container: {
     paddingHorizontal: 20,
     paddingTop: 18,
-    paddingBottom: 40,
+    paddingBottom: 90,
+    flexGrow: 1,
   },
   backButton: {
     alignSelf: 'flex-start',

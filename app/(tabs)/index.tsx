@@ -1,10 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -73,6 +75,29 @@ function getNomeIniciais(nome: string) {
   return `${partes[0][0]}${partes[1][0]}`.toUpperCase();
 }
 
+function gerarCorUsuario(chave: string) {
+  const paleta = [
+    { bg: "#DBEAFE", border: "#93C5FD", text: "#1E3A8A" },
+    { bg: "#DCFCE7", border: "#86EFAC", text: "#166534" },
+    { bg: "#FCE7F3", border: "#F9A8D4", text: "#9D174D" },
+    { bg: "#FEF3C7", border: "#FCD34D", text: "#92400E" },
+    { bg: "#EDE9FE", border: "#C4B5FD", text: "#5B21B6" },
+    { bg: "#CCFBF1", border: "#5EEAD4", text: "#115E59" },
+    { bg: "#FFE4E6", border: "#FDA4AF", text: "#9F1239" },
+    { bg: "#E0F2FE", border: "#7DD3FC", text: "#0C4A6E" },
+  ];
+
+  let hash = 0;
+  const valor = String(chave || "usuario-sem-chave");
+
+  for (let i = 0; i < valor.length; i++) {
+    hash = valor.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  const indice = Math.abs(hash) % paleta.length;
+  return paleta[indice];
+}
+
 function criarHtmlMapaHome(
   viagens: Viagem[],
   selectedTrip: Viagem | null,
@@ -84,6 +109,14 @@ function criarHtmlMapaHome(
     const nome = getNomeUsuario(viagem);
     const iniciais = getNomeIniciais(nome);
     const tipo = getTipoUsuario(viagem);
+    const userKey = String(
+      viagem.idUsuario ??
+        viagem.usuario?.idUsuario ??
+        viagem.usuario?.id ??
+        viagem.usuario?.email ??
+        nome
+    );
+    const cor = gerarCorUsuario(userKey);
 
     return {
       id,
@@ -95,10 +128,13 @@ function criarHtmlMapaHome(
       entrada: viagem.horarioEntrada || "",
       saida: viagem.horarioSaida || "",
       ajuda: String(viagem.ajudaDeCusto ?? "0"),
+      cor,
     };
   });
 
   const selectedId = selectedTrip ? getTripId(selectedTrip) : "";
+  const bottomPadding = 320;
+  const centerPanYOffset = 150;
 
   return `
 <!DOCTYPE html>
@@ -181,19 +217,18 @@ function criarHtmlMapaHome(
       height: 40px;
       padding: 0 10px;
       border-radius: 999px;
-      background: rgba(255,255,255,0.96);
-      border: 1px solid #bfdbfe;
-      color: #0f172a;
       font-size: 12px;
       font-weight: 800;
       box-shadow: 0 4px 10px rgba(0,0,0,0.16);
       white-space: nowrap;
+      transition: transform 0.15s ease;
     }
 
     .trip-marker.selected {
-      background: #06264d;
-      border-color: #06264d;
-      color: #fff;
+      background: #06264d !important;
+      border: 1px solid #06264d !important;
+      color: #fff !important;
+      transform: scale(1.04);
     }
 
     .leaflet-tooltip.route-label {
@@ -223,6 +258,8 @@ function criarHtmlMapaHome(
     const selectedId = ${JSON.stringify(selectedId)};
     const loading = document.getElementById("loading");
     const errorBox = document.getElementById("error");
+    const BOTTOM_PADDING = ${JSON.stringify(bottomPadding)};
+    const CENTER_PAN_Y_OFFSET = ${JSON.stringify(centerPanYOffset)};
 
     const GEO_CACHE_KEY = "faculride_home_geo_v2";
     const GEO_TTL_MS = 1000 * 60 * 60 * 24 * 30;
@@ -444,11 +481,19 @@ function criarHtmlMapaHome(
       });
     }
 
-    function createTripMarker(iniciais, selected) {
+    function createTripMarker(iniciais, selected, cor) {
+      const bg = cor?.bg || "rgba(255,255,255,0.96)";
+      const border = cor?.border || "#bfdbfe";
+      const text = cor?.text || "#0f172a";
+
       return L.divIcon({
         className: "",
         html:
-          '<div class="trip-marker ' + (selected ? "selected" : "") + '">' +
+          '<div class="trip-marker ' + (selected ? "selected" : "") + '" style="' +
+          'background:' + bg + ';' +
+          'border:1px solid ' + border + ';' +
+          'color:' + text + ';' +
+          '">' +
           String(iniciais || "US") +
           "</div>",
         iconSize: [46, 40],
@@ -559,7 +604,10 @@ function criarHtmlMapaHome(
         }
       ).addTo(map);
 
-      map.fitBounds(rotaLayer.getBounds(), { padding: [40, 40] });
+      map.fitBounds(rotaLayer.getBounds(), {
+        paddingTopLeft: [40, 40],
+        paddingBottomRight: [40, BOTTOM_PADDING],
+      });
     }
 
     function desenharFallback(origemLatLng, destinoLatLng) {
@@ -570,7 +618,10 @@ function criarHtmlMapaHome(
         dashArray: "8, 8",
       }).addTo(map);
 
-      map.fitBounds(line.getBounds(), { padding: [40, 40] });
+      map.fitBounds(line.getBounds(), {
+        paddingTopLeft: [40, 40],
+        paddingBottomRight: [40, BOTTOM_PADDING],
+      });
     }
 
     async function carregar() {
@@ -583,7 +634,8 @@ function criarHtmlMapaHome(
         try {
           fatecGeo = await geocode(FATEC_QUERY);
           if (fatecGeo) {
-            map.setView([fatecGeo.lat, fatecGeo.lon], 12);
+            map.setView([fatecGeo.lat, fatecGeo.lon], 12, { animate: false });
+            map.panBy([0, CENTER_PAN_Y_OFFSET], { animate: false });
           }
         } catch (e) {}
 
@@ -615,7 +667,7 @@ function criarHtmlMapaHome(
             const selected = trip.id === selectedId;
 
             const marker = L.marker(latlng, {
-              icon: createTripMarker(trip.iniciais, selected),
+              icon: createTripMarker(trip.iniciais, selected, trip.cor),
             }).addTo(map);
 
             marker.on("click", function () {
@@ -628,7 +680,11 @@ function criarHtmlMapaHome(
         }
 
         if (!selectedId && bounds.length) {
-          map.fitBounds(bounds, { padding: [55, 55] });
+          const boundsObj = L.latLngBounds(bounds);
+          map.fitBounds(boundsObj, {
+            paddingTopLeft: [55, 55],
+            paddingBottomRight: [55, BOTTOM_PADDING],
+          });
         }
 
         if (selectedId) {
@@ -688,24 +744,24 @@ export default function HomeScreen() {
   const [sheetAberto, setSheetAberto] = useState(true);
   const [mapKey, setMapKey] = useState(0);
 
-  useEffect(() => {
-    const carregarUsuarioLocal = async () => {
-      try {
-        const usuarioLogadoStr = await AsyncStorage.getItem("usuarioLogado");
-        const usuarioSalvo2 = await AsyncStorage.getItem("usuario");
-        const usuarioString = usuarioLogadoStr || usuarioSalvo2;
+  const carregarUsuarioLocal = useCallback(async () => {
+    try {
+      const usuarioLogadoStr = await AsyncStorage.getItem("usuarioLogado");
+      const usuarioSalvo2 = await AsyncStorage.getItem("usuario");
+      const usuarioString = usuarioLogadoStr || usuarioSalvo2;
 
-        if (!usuarioString) return;
+      if (!usuarioString) return;
 
-        const usuario = JSON.parse(usuarioString);
-        setUsuarioLogado(usuario);
-      } catch (error) {
-        console.error("Erro ao carregar usuário local:", error);
-      }
-    };
-
-    carregarUsuarioLocal();
+      const usuario = JSON.parse(usuarioString);
+      setUsuarioLogado(usuario);
+    } catch (error) {
+      console.error("Erro ao carregar usuário local:", error);
+    }
   }, []);
+
+  useEffect(() => {
+    carregarUsuarioLocal();
+  }, [carregarUsuarioLocal]);
 
   const normalizarDatasViagem = useCallback((v: Viagem): string[] => {
     const datas: string[] = [];
@@ -736,8 +792,12 @@ export default function HomeScreen() {
     )].sort((a, b) => a.localeCompare(b));
   }, []);
 
-  const carregarDados = useCallback(async () => {
+  const carregarDados = useCallback(async (silencioso = false) => {
     try {
+      if (!silencioso) {
+        setLoading(true);
+      }
+
       const token = await AsyncStorage.getItem("token");
 
       const headers: HeadersInit = {
@@ -786,9 +846,16 @@ export default function HomeScreen() {
     carregarDados();
   }, [carregarDados]);
 
+  useFocusEffect(
+    useCallback(() => {
+      carregarUsuarioLocal();
+      carregarDados(true);
+    }, [carregarDados, carregarUsuarioLocal])
+  );
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    carregarDados();
+    carregarDados(true);
   }, [carregarDados]);
 
   const tipoNormalizado = useCallback(
@@ -1045,6 +1112,9 @@ export default function HomeScreen() {
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.sheetScrollContent}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+              }
             >
               <Text style={styles.title}>Mapa de Caronas</Text>
               <Text style={styles.subtitle}>
