@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - feature/action
-      
+
 permissions:
     contents: write
     pull-requests: read
@@ -45,20 +45,32 @@ jobs:
         run: |
           git fetch --tags --force --prune
                 
-          # Pega a última tag ou define v0.0.0 como base
-          LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1 || echo "v0.0.0")
-          CURRENT_VERSION="${LAST_TAG#v}"
-          BASE_VERSION=$(echo $CURRENT_VERSION | cut -d'-' -f1)
+          # Tenta pegar a última tag real
+          LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
                 
-          # Detecta se houve alguma 'feat' nos commits desde a última tag
-          # Se houver, incrementamos 'minor', caso contrário, 'patch'
+          if [ -z "$LAST_TAG" ]; then
+            echo "Nenhuma tag encontrada. Iniciando do zero."
+            BASE_VERSION="0.0.0"
+            # Se não há tag, validamos todos os commits desde o início
+            RANGE="HEAD"
+          else
+            echo "Última tag encontrada: $LAST_TAG"
+            BASE_VERSION="${LAST_TAG#v}"
+            # Remove sufixos para cálculo (ex: 1.0.1-preview.1 -> 1.0.1)
+            BASE_VERSION=$(echo $BASE_VERSION | cut -d'-' -f1)
+            RANGE="${LAST_TAG}..HEAD"
+          fi
+                
+          # Detecta se houve alguma 'feat' (incrementa minor) ou apenas fixes (patch)
+          # O '|| true' impede que o grep quebre o script caso não encontre nada
           INC_TYPE="patch"
-          if git log ${LAST_TAG}..HEAD --pretty=%s | grep -qE "^feat|^feat\!"; then
+          if git log $RANGE --pretty=%s 2>/dev/null | grep -qE "^feat|^feat\!"; then
             INC_TYPE="minor"
           fi
 
-          # Calcula a base da nova versão (ex: 1.1.0 ou 1.0.2)
-          NEW_BASE=$(semver -i $INC_TYPE "$BASE_VERSION")
+          # Calcula a base (ex: 1.1.0 ou 1.0.2)
+          # Usamos npx para garantir que o semver funcione mesmo que o global falhe
+          NEW_BASE=$(npx semver -i $INC_TYPE "$BASE_VERSION")
 
           # Contador de previews para esta versão específica
           COUNT=$(git tag --list "v${NEW_BASE}-preview.*" | wc -l | xargs)
