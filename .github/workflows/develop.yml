@@ -125,7 +125,7 @@ jobs:
           # Sem isso, você entra em um loop infinito de builds.
           git commit -m "chore(version): bump to ${{ steps.version.outputs.new_version }} [skip ci]" || echo "Sem alterações para commitar"
           
-          git push origin develop
+          git push origin feature/action
 
   notify_failure:
     name: Notificar Falha
