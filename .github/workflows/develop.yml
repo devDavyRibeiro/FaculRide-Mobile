@@ -3,7 +3,7 @@ name: CI / CD - Mobile Develop (preview)
 on:
   push:
     branches:
-      - feature/action
+      - develop
 
 permissions:
     contents: write
@@ -125,7 +125,7 @@ jobs:
           # Sem isso, você entra em um loop infinito de builds.
           git commit -m "chore(version): bump to ${{ steps.version.outputs.new_version }} [skip ci]" || echo "Sem alterações para commitar"
           
-          git push origin feature/action
+          git push origin develop
 
   notify_failure:
     name: Notificar Falha
