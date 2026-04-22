@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8081:8081"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    stdin_open: true 
+    tty: true
+    command: npx expo start --tunnel
+    environment:
+      - EXPO_NO_BROWSER=1
+      - NODE_ENV=developmentd
