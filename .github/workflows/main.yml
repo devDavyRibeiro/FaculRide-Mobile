@@ -1,4 +1,4 @@
-name: CI / CD - Mobile Production
+name: CI / CD - Mobile - Production
 
 on:
   push:
