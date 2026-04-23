@@ -1,9 +1,9 @@
-name: CI / CD - Mobile Develop (preview)
+name: CI / CD - Mobile Production
 
 on:
   push:
     branches:
-      - develop
+      - main
 
 permissions:
     contents: write
@@ -39,7 +39,7 @@ jobs:
       - name: Instalar Semver Global
         run: npm install -g semver
 
-      - name: Calcular nova versão Preview
+      - name: Calcular nova versão
         id: version
         shell: bash
         run: |
@@ -51,7 +51,6 @@ jobs:
           if [ -z "$LAST_TAG" ]; then
             echo "Nenhuma tag encontrada. Iniciando do zero."
             BASE_VERSION="0.0.0"
-            # Se não há tag, validamos todos os commits desde o início
             RANGE="HEAD"
           else
             echo "Última tag encontrada: $LAST_TAG"
@@ -61,23 +60,20 @@ jobs:
             RANGE="${LAST_TAG}..HEAD"
           fi
                 
-          # Detecta se houve alguma 'feat' (incrementa minor) ou apenas fixes (patch)
-          # O '|| true' impede que o grep quebre o script caso não encontre nada
+          # Detecta se houve alguma 'feat' (minor) ou 'fix' (patch)
           INC_TYPE="patch"
           if git log $RANGE --pretty=%s 2>/dev/null | grep -qE "^feat|^feat\!"; then
             INC_TYPE="minor"
           fi
 
-          # Calcula a base (ex: 1.1.0 ou 1.0.2)
-          # Usamos npx para garantir que o semver funcione mesmo que o global falhe
+          # Calcula a nova versão sem sufixos
           NEW_BASE=$(npx semver -i $INC_TYPE "$BASE_VERSION")
 
-          # Contador de previews para esta versão específica
-          COUNT=$(git tag --list "v${NEW_BASE}-preview.*" | wc -l | xargs)
-          PREVIEW_VERSION="v${NEW_BASE}-preview.$((COUNT+1))"
+          # Adicionamos o 'v' novamente para a tag do GitHub e Docker
+          FINAL_VERSION="v${NEW_BASE}"
 
-          echo "Calculado: $PREVIEW_VERSION (Tipo: $INC_TYPE)"
-          echo "new_version=$PREVIEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Calculado Produção: $FINAL_VERSION (Tipo: $INC_TYPE)"
+          echo "new_version=$FINAL_VERSION" >> $GITHUB_OUTPUT
 
       - name: Atualizar package.json
         id: update_package
@@ -98,13 +94,13 @@ jobs:
           
           echo "new_version=$VERSION_VALUE" >> $GITHUB_OUTPUT
 
-      - name: Criar Release Preview (GitHub)
+      - name: Criar Release (GitHub)
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.new_version }}
-          name: "Mobile Preview ${{ steps.version.outputs.new_version }}"
+          name: "Mobile Release ${{ steps.version.outputs.new_version }}"
           draft: false
-          prerelease: true
+          prerelease: false
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -123,9 +119,9 @@ jobs:
           # O [skip ci] no final da mensagem é CRÍTICO.
           # Ele diz ao GitHub: "Não dispare outro pipeline por causa deste commit".
           # Sem isso, você entra em um loop infinito de builds.
-          git commit -m "chore(version): bump to ${{ steps.version.outputs.new_version }} [skip ci]" || echo "Sem alterações para commitar"
+          git commit -m "chore(version): production to ${{ steps.version.outputs.new_version }} [skip ci]" || echo "Sem alterações para commitar"
           
-          git push origin develop
+          git push origin main
       
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -137,7 +133,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/faculride-mobile:development
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/faculride-mobile:production
 
   notify_failure:
     name: Notificar Falha
