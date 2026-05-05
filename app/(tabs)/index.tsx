@@ -6,11 +6,13 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Modal,
   RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -55,6 +57,41 @@ type Viagem = {
   agendamentos?: Agendamento[];
   usuario?: Usuario;
   tipoUsuario?: string;
+  statusViagem?: "pendente" | "aceita" | "recusada" | "concluida" | "cancelada";
+  cancelada?: boolean;
+};
+
+type Avaliacao = {
+  ID_Avaliacao?: number;
+  ID_Avaliador: number;
+  ID_Avaliado: number;
+  ID_Viagem: number;
+  Comentario: string;
+  Estrelas: number;
+};
+
+type ConversaUsuario = {
+  id?: number;
+  idUsuario?: number;
+  nome?: string;
+  email?: string;
+  telefone?: string;
+  genero?: boolean | null;
+  foto?: string | null;
+  fotoUrl?: string | null;
+};
+
+type Conversa = {
+  idConversa: number;
+  idViagem: number;
+  idMotorista: number;
+  idPassageiro: number;
+  status: "pendente" | "aguardando_confirmacao" | "aceita" | "recusada" | string;
+  aceiteMotorista?: boolean;
+  aceitePassageiro?: boolean;
+  viagem?: Viagem;
+  motorista?: ConversaUsuario;
+  passageiro?: ConversaUsuario;
 };
 
 type FiltroTipo = "todos" | "motorista" | "passageiro";
@@ -66,6 +103,10 @@ const baseURL =
 
 function getTripId(viagem: Viagem) {
   return String(viagem.idViagem ?? viagem.id ?? "");
+}
+
+function getStatusViagem(viagem: Viagem) {
+  return String(viagem?.statusViagem || "").trim().toLowerCase();
 }
 
 function getNomeIniciais(nome: string) {
@@ -657,8 +698,7 @@ function criarHtmlMapaHome(
             addFatecMarker(fatecLatLng);
           }
         }
-
-        for (const trip of validTrips) {
+                for (const trip of validTrips) {
           try {
             const origemGeo = await geocode(trip.partida);
             const latlng = [origemGeo.lat, origemGeo.lon];
@@ -733,6 +773,8 @@ export default function HomeScreen() {
   const [viagens, setViagens] = useState<Viagem[]>([]);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [usuarioLogado, setUsuarioLogado] = useState<Usuario | null>(null);
+  const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
+  const [conversas, setConversas] = useState<Conversa[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -743,6 +785,12 @@ export default function HomeScreen() {
   const [selectedTrip, setSelectedTrip] = useState<Viagem | null>(null);
   const [sheetAberto, setSheetAberto] = useState(true);
   const [mapKey, setMapKey] = useState(0);
+
+  const [viagemParaAvaliar, setViagemParaAvaliar] = useState<Viagem | null>(null);
+  const [mostrarAvaliacao, setMostrarAvaliacao] = useState(false);
+  const [estrelas, setEstrelas] = useState(0);
+  const [comentario, setComentario] = useState("");
+  const [enviandoAvaliacao, setEnviandoAvaliacao] = useState(false);
 
   const carregarUsuarioLocal = useCallback(async () => {
     try {
@@ -808,9 +856,11 @@ export default function HomeScreen() {
         headers.Authorization = `Bearer ${token}`;
       }
 
-      const [resViagens, resUsuarios] = await Promise.all([
+      const [resViagens, resUsuarios, resAvaliacoes, resConversas] = await Promise.all([
         fetch(`${baseURL}/viagem`, { headers }),
         fetch(`${baseURL}/usuario`, { headers }),
+        fetch(`${baseURL}/avaliacao`, { headers }),
+        fetch(`${baseURL}/conversas`, { headers }),
       ]);
 
       if (!resViagens.ok) {
@@ -821,8 +871,18 @@ export default function HomeScreen() {
         throw new Error("Erro ao carregar usuários");
       }
 
+      if (!resAvaliacoes.ok) {
+        throw new Error("Erro ao carregar avaliações");
+      }
+
+      if (!resConversas.ok) {
+        throw new Error("Erro ao carregar conversas");
+      }
+
       const viagensJson = await resViagens.json();
       const usuariosJson = await resUsuarios.json();
+      const avaliacoesJson = await resAvaliacoes.json();
+      const conversasJson = await resConversas.json();
 
       const viagensNormalizadas = Array.isArray(viagensJson)
         ? viagensJson.map((v) => ({
@@ -833,6 +893,8 @@ export default function HomeScreen() {
 
       setViagens(viagensNormalizadas);
       setUsuarios(Array.isArray(usuariosJson) ? usuariosJson : []);
+      setAvaliacoes(Array.isArray(avaliacoesJson) ? avaliacoesJson : []);
+      setConversas(Array.isArray(conversasJson) ? conversasJson : []);
     } catch (error) {
       console.error("Erro ao carregar caronas:", error);
       Alert.alert("Erro", "Não foi possível carregar as caronas disponíveis.");
@@ -971,9 +1033,18 @@ export default function HomeScreen() {
     return usuarioLogado?.cidade?.trim().toLowerCase() || "";
   }, [usuarioLogado]);
 
+  const getMeuId = useCallback(() => {
+    return Number(usuarioLogado?.idUsuario ?? usuarioLogado?.id ?? 0);
+  }, [usuarioLogado]);
+
   const viagensFiltradas = useMemo(() => {
     return viagens.filter((v) => {
       if (!v.partida || !v.destino) return false;
+
+      const status = getStatusViagem(v);
+
+      // NOVA REGRA CENTRAL: Home só mostra caronas públicas/disponíveis
+      if (status !== "pendente") return false;
 
       const tipo = tipoNormalizado(v);
 
@@ -1061,6 +1132,190 @@ export default function HomeScreen() {
       tipoNormalizado
     );
   }, [viagensFiltradas, selectedTrip, pegarNomeUsuario, tipoNormalizado]);
+
+  const encontrarConversaAceitaDaViagem = useCallback((viagem: Viagem) => {
+    const idViagem = Number(viagem.idViagem ?? viagem.id ?? 0);
+    const meuId = getMeuId();
+
+    return conversas.find((c) => {
+      const pertenceAoUsuario =
+        Number(c.idMotorista) === meuId || Number(c.idPassageiro) === meuId;
+
+      return (
+        Number(c.idViagem) === idViagem &&
+        c.status === "aceita" &&
+        pertenceAoUsuario
+      );
+    }) || null;
+  }, [conversas, getMeuId]);
+
+  const pegarOutroUsuarioDaConversa = useCallback((conversa: Conversa | null) => {
+    if (!conversa) return null;
+
+    const meuId = getMeuId();
+    const souMotorista = Number(conversa.idMotorista) === meuId;
+
+    return souMotorista ? conversa.passageiro || null : conversa.motorista || null;
+  }, [getMeuId]);
+
+  const nomeOutroUsuarioAvaliacao = useMemo(() => {
+    const conversa = viagemParaAvaliar
+      ? encontrarConversaAceitaDaViagem(viagemParaAvaliar)
+      : null;
+
+    const outroUsuario = pegarOutroUsuarioDaConversa(conversa);
+
+    if (outroUsuario?.nome) return outroUsuario.nome;
+    if (viagemParaAvaliar) return pegarNomeUsuario(viagemParaAvaliar);
+
+    return "usuário";
+  }, [
+    viagemParaAvaliar,
+    encontrarConversaAceitaDaViagem,
+    pegarOutroUsuarioDaConversa,
+    pegarNomeUsuario,
+  ]);
+
+  const idAvaliadoAtual = useMemo(() => {
+    const conversa = viagemParaAvaliar
+      ? encontrarConversaAceitaDaViagem(viagemParaAvaliar)
+      : null;
+
+    const outroUsuario = pegarOutroUsuarioDaConversa(conversa);
+
+    return Number(outroUsuario?.idUsuario ?? outroUsuario?.id ?? 0);
+  }, [viagemParaAvaliar, encontrarConversaAceitaDaViagem, pegarOutroUsuarioDaConversa]);
+
+  useEffect(() => {
+    if (!usuarioLogado || !viagens.length || !conversas.length) return;
+
+    const meuId = getMeuId();
+    if (!meuId) return;
+
+    const viagemPendente = viagens.find((v) => {
+      const idViagem = Number(v.idViagem ?? v.id ?? 0);
+      if (!idViagem) return false;
+
+      const conversaAceita = conversas.find((c) => {
+        const pertenceAoUsuario =
+          Number(c.idMotorista) === meuId || Number(c.idPassageiro) === meuId;
+
+        return (
+          Number(c.idViagem) === idViagem &&
+          c.status === "aceita" &&
+          pertenceAoUsuario
+        );
+      });
+
+      if (!conversaAceita) return false;
+
+      // NOVA REGRA: avaliação depende do status vindo do back
+      if (getStatusViagem(v) !== "concluida") return false;
+
+      const jaAvaliou = avaliacoes.some(
+        (a) =>
+          Number(a.ID_Avaliador) === meuId &&
+          Number(a.ID_Viagem) === idViagem
+      );
+
+      return !jaAvaliou;
+    });
+
+    if (viagemPendente) {
+      const mesmoId =
+        Number(viagemParaAvaliar?.idViagem ?? viagemParaAvaliar?.id ?? 0) ===
+        Number(viagemPendente.idViagem ?? viagemPendente.id ?? 0);
+
+      setViagemParaAvaliar(viagemPendente);
+
+      if (!mesmoId) {
+        setEstrelas(0);
+        setComentario("");
+        setMostrarAvaliacao(true);
+      }
+    }
+  }, [usuarioLogado, viagens, conversas, avaliacoes, getMeuId, viagemParaAvaliar]);
+    const enviarAvaliacao = useCallback(async () => {
+    try {
+      const meuId = getMeuId();
+      const idViagem = Number(viagemParaAvaliar?.idViagem ?? viagemParaAvaliar?.id ?? 0);
+      const idAvaliado = idAvaliadoAtual;
+
+      if (!meuId || !idViagem || !idAvaliado) {
+        Alert.alert("Aviso", "Não foi possível identificar os dados da avaliação.");
+        return;
+      }
+
+      if (!estrelas || estrelas < 1 || estrelas > 5) {
+        Alert.alert("Aviso", "Selecione uma nota de 1 a 5 estrelas.");
+        return;
+      }
+
+      if (!comentario.trim() || comentario.trim().length < 3) {
+        Alert.alert("Aviso", "Escreva um comentário com pelo menos 3 caracteres.");
+        return;
+      }
+
+      setEnviandoAvaliacao(true);
+
+      const token = await AsyncStorage.getItem("token");
+
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      };
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const body = {
+        ID_Avaliador: meuId,
+        ID_Avaliado: idAvaliado,
+        ID_Viagem: idViagem,
+        Comentario: comentario.trim(),
+        Estrelas: estrelas,
+      };
+
+      const response = await fetch(`${baseURL}/avaliacao`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.erro || "Não foi possível enviar a avaliação."
+        );
+      }
+
+      Alert.alert("Tudo certo", "Sua avaliação foi enviada com sucesso.");
+
+      setMostrarAvaliacao(false);
+      setEstrelas(0);
+      setComentario("");
+      setViagemParaAvaliar(null);
+
+      await carregarDados(true);
+    } catch (error: any) {
+      console.error("Erro ao enviar avaliação:", error);
+      Alert.alert("Erro", error?.message || "Não foi possível enviar a avaliação.");
+    } finally {
+      setEnviandoAvaliacao(false);
+    }
+  }, [
+    getMeuId,
+    viagemParaAvaliar,
+    idAvaliadoAtual,
+    estrelas,
+    comentario,
+    carregarDados,
+  ]);
+
+  const fecharModalAvaliacao = useCallback(() => {
+    setMostrarAvaliacao(false);
+  }, []);
 
   if (loading) {
     return (
@@ -1301,6 +1556,92 @@ export default function HomeScreen() {
           </View>
         )}
       </SafeAreaView>
+
+      <Modal
+        visible={mostrarAvaliacao}
+        transparent
+        animationType="fade"
+        onRequestClose={fecharModalAvaliacao}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Avaliar carona</Text>
+            <Text style={styles.modalSubtitle}>
+              Como foi sua carona com{" "}
+              <Text style={styles.modalBold}>{nomeOutroUsuarioAvaliacao}</Text>?
+            </Text>
+
+            {!!viagemParaAvaliar && (
+              <View style={styles.modalInfoBox}>
+                <Text style={styles.modalInfoText}>
+                  <Text style={styles.modalInfoLabel}>Rota:</Text>{" "}
+                  {viagemParaAvaliar.partida} → {viagemParaAvaliar.destino}
+                </Text>
+                <Text style={styles.modalInfoText}>
+                  <Text style={styles.modalInfoLabel}>Horário:</Text>{" "}
+                  {viagemParaAvaliar.horarioEntrada || "-"} às{" "}
+                  {viagemParaAvaliar.horarioSaida || "-"}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.starsRow}>
+              {[1, 2, 3, 4, 5].map((nota) => (
+                <TouchableOpacity
+                  key={nota}
+                  style={styles.starButton}
+                  onPress={() => setEstrelas(nota)}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.starText,
+                      nota <= estrelas && styles.starTextActive,
+                    ]}
+                  >
+                    ★
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput
+              value={comentario}
+              onChangeText={setComentario}
+              placeholder="Escreva um comentário sobre a carona"
+              placeholderTextColor="#94A3B8"
+              style={styles.commentInput}
+              multiline
+              textAlignVertical="top"
+              maxLength={255}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalSecondaryButton}
+                onPress={fecharModalAvaliacao}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.modalSecondaryButtonText}>Agora não</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.modalPrimaryButton,
+                  enviandoAvaliacao && styles.modalButtonDisabled,
+                ]}
+                onPress={enviarAvaliacao}
+                activeOpacity={0.85}
+                disabled={enviandoAvaliacao}
+              >
+                <Text style={styles.modalPrimaryButtonText}>
+                  {enviandoAvaliacao ? "Enviando..." : "Enviar avaliação"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1592,5 +1933,134 @@ const styles = StyleSheet.create({
     color: "#64748B",
     textAlign: "center",
     lineHeight: 20,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+
+  modalCard: {
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 20,
+  },
+
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#0F172A",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+
+  modalSubtitle: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: "#475569",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+
+  modalBold: {
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+
+  modalInfoBox: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+
+  modalInfoText: {
+    fontSize: 13,
+    color: "#334155",
+    marginBottom: 4,
+    lineHeight: 19,
+  },
+
+  modalInfoLabel: {
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+
+  starsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+
+  starButton: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+
+  starText: {
+    fontSize: 34,
+    color: "#CBD5E1",
+  },
+
+  starTextActive: {
+    color: "#FACC15",
+  },
+
+  commentInput: {
+    minHeight: 100,
+    maxHeight: 150,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 16,
+    padding: 14,
+    fontSize: 14,
+    color: "#0F172A",
+    backgroundColor: "#F8FAFC",
+    marginBottom: 16,
+  },
+
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+
+  modalSecondaryButton: {
+    flex: 1,
+    backgroundColor: "#E2E8F0",
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  modalSecondaryButtonText: {
+    color: "#334155",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+  modalPrimaryButton: {
+    flex: 1,
+    backgroundColor: "#2563EB",
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  modalPrimaryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+  modalButtonDisabled: {
+    opacity: 0.65,
   },
 });

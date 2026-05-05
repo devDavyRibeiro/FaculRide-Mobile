@@ -22,7 +22,10 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 type LocalUser = {
   id?: number;
@@ -46,6 +49,9 @@ type ConversaViagem = {
   horarioEntrada?: string;
   horarioSaida?: string;
   ajudaDeCusto?: string | number;
+
+  statusViagem?: "pendente" | "aceita" | "recusada" | "concluida" | "cancelada";
+  cancelada?: boolean;
 };
 
 type Conversa = {
@@ -122,6 +128,10 @@ function getFotoUsuario(usuario?: ConversaUsuario | null) {
   );
 }
 
+function getStatusViagemConversa(viagem?: ConversaViagem | null) {
+  return String(viagem?.statusViagem || "").trim().toLowerCase();
+}
+
 function deduplicarConversas(lista: Conversa[]) {
   const mapa = new Map<number, Conversa>();
 
@@ -158,6 +168,7 @@ function deduplicarMensagens(lista: Mensagem[]) {
 
 export default function ContatoScreen() {
   const params = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
 
   const idViagemParam = useMemo(
     () => normalizarParamString(params?.idViagem),
@@ -502,6 +513,7 @@ export default function ContatoScreen() {
         ajuda: String(
           conversaSelecionada.viagem.ajudaDeCusto ?? ajudaParam ?? "0"
         ),
+        statusViagem: getStatusViagemConversa(conversaSelecionada.viagem),
       };
     }
 
@@ -511,6 +523,7 @@ export default function ContatoScreen() {
       entrada: entradaParam || "-",
       saida: saidaParam || "-",
       ajuda: ajudaParam || "0",
+      statusViagem: "",
     };
   }, [
     conversaSelecionada,
@@ -536,6 +549,11 @@ export default function ContatoScreen() {
   }, [conversaSelecionada, meuId, tipoParam]);
 
   const statusLabel = useMemo(() => {
+    const statusViagem = detalhesViagemSelecionada.statusViagem;
+
+    if (statusViagem === "cancelada") return "Carona cancelada";
+    if (statusViagem === "concluida") return "Carona concluída";
+
     if (!conversaSelecionada) return "Sem conversa";
 
     const status = conversaSelecionada.status || "pendente";
@@ -544,9 +562,14 @@ export default function ContatoScreen() {
     if (status === "recusada") return "Conversa encerrada";
     if (status === "aguardando_confirmacao") return "Aguardando confirmação";
     return "Aguardando decisão";
-  }, [conversaSelecionada]);
+  }, [conversaSelecionada, detalhesViagemSelecionada.statusViagem]);
 
   const statusColor = useMemo(() => {
+    const statusViagem = detalhesViagemSelecionada.statusViagem;
+
+    if (statusViagem === "cancelada") return "#6B7280";
+    if (statusViagem === "concluida") return "#2563EB";
+
     if (!conversaSelecionada) return "#64748B";
 
     const status = conversaSelecionada.status || "pendente";
@@ -555,7 +578,7 @@ export default function ContatoScreen() {
     if (status === "recusada") return "#DC2626";
     if (status === "aguardando_confirmacao") return "#F59E0B";
     return "#2563EB";
-  }, [conversaSelecionada]);
+  }, [conversaSelecionada, detalhesViagemSelecionada.statusViagem]);
 
   const euJaAceitei = useMemo(() => {
     if (!conversaSelecionada || !meuId) return false;
@@ -579,10 +602,26 @@ export default function ContatoScreen() {
 
   const podeEnviarMensagem = useMemo(() => {
     if (!conversaSelecionada?.idConversa) return false;
+
+    const statusViagem = detalhesViagemSelecionada.statusViagem;
+    if (statusViagem === "cancelada" || statusViagem === "concluida") {
+      return false;
+    }
+
     return conversaSelecionada.status !== "recusada";
-  }, [conversaSelecionada]);
+  }, [conversaSelecionada, detalhesViagemSelecionada.statusViagem]);
 
   const observacaoStatus = useMemo(() => {
+    const statusViagem = detalhesViagemSelecionada.statusViagem;
+
+    if (statusViagem === "cancelada") {
+      return "Essa carona foi cancelada. O chat permanece apenas para histórico.";
+    }
+
+    if (statusViagem === "concluida") {
+      return "Essa carona já foi concluída. Você pode revisar o histórico da conversa.";
+    }
+
     if (!conversaSelecionada) {
       return "Abra ou selecione uma conversa para negociar a carona.";
     }
@@ -608,7 +647,7 @@ export default function ContatoScreen() {
     }
 
     return "Converse e alinhe os detalhes antes de aceitar ou recusar.";
-  }, [conversaSelecionada, euJaAceitei, outroJaAceitou]);
+  }, [conversaSelecionada, euJaAceitei, outroJaAceitou, detalhesViagemSelecionada.statusViagem]);
 
   const handleSelecionarConversa = useCallback(
     async (conversa: Conversa) => {
@@ -625,6 +664,11 @@ export default function ContatoScreen() {
 
     if (!conversaSelecionada?.idConversa) {
       Alert.alert("Aviso", "Selecione uma conversa antes de enviar mensagem.");
+      return;
+    }
+
+    if (!podeEnviarMensagem) {
+      Alert.alert("Aviso", "Essa conversa não aceita novas mensagens.");
       return;
     }
 
@@ -660,10 +704,16 @@ export default function ContatoScreen() {
     } finally {
       setEnviandoMensagem(false);
     }
-  }, [input, conversaSelecionada, obterHeaders, listarMensagens, listarConversas]);
+  }, [input, conversaSelecionada, obterHeaders, listarMensagens, listarConversas, podeEnviarMensagem]);
 
   const handleAcceptRide = useCallback(async () => {
     if (!conversaSelecionada?.idConversa) return;
+
+    const statusViagem = detalhesViagemSelecionada.statusViagem;
+    if (statusViagem === "cancelada" || statusViagem === "concluida") {
+      Alert.alert("Aviso", "Essa carona não pode mais ser confirmada.");
+      return;
+    }
 
     try {
       setSalvandoAcao(true);
@@ -705,10 +755,16 @@ export default function ContatoScreen() {
     } finally {
       setSalvandoAcao(false);
     }
-  }, [conversaSelecionada, obterHeaders, listarConversas]);
+  }, [conversaSelecionada, obterHeaders, listarConversas, detalhesViagemSelecionada.statusViagem]);
 
   const handleRejectRide = useCallback(async () => {
     if (!conversaSelecionada?.idConversa) return;
+
+    const statusViagem = detalhesViagemSelecionada.statusViagem;
+    if (statusViagem === "cancelada" || statusViagem === "concluida") {
+      Alert.alert("Aviso", "Essa carona não pode mais ser recusada.");
+      return;
+    }
 
     Alert.alert(
       "Recusar carona",
@@ -767,7 +823,7 @@ export default function ContatoScreen() {
         },
       ]
     );
-  }, [conversaSelecionada, obterHeaders, listarConversas]);
+  }, [conversaSelecionada, obterHeaders, listarConversas, detalhesViagemSelecionada.statusViagem]);
 
   function renderStars() {
     return (
@@ -843,7 +899,7 @@ export default function ContatoScreen() {
       <KeyboardAvoidingView
         style={styles.keyboard}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 92 : 20}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 92 : 0}
       >
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -931,8 +987,14 @@ export default function ContatoScreen() {
                     Number(conversaSelecionada?.idConversa) ===
                     Number(conversa.idConversa);
 
+                  const statusViagemChat = getStatusViagemConversa(conversa.viagem);
+
                   const corStatus =
-                    conversa.status === "aceita"
+                    statusViagemChat === "cancelada"
+                      ? "#6B7280"
+                      : statusViagemChat === "concluida"
+                      ? "#2563EB"
+                      : conversa.status === "aceita"
                       ? "#16A34A"
                       : conversa.status === "recusada"
                       ? "#DC2626"
@@ -1001,6 +1063,10 @@ export default function ContatoScreen() {
                 name={
                   !conversaSelecionada
                     ? "chatbubble-ellipses-outline"
+                    : detalhesViagemSelecionada.statusViagem === "cancelada"
+                    ? "remove-circle"
+                    : detalhesViagemSelecionada.statusViagem === "concluida"
+                    ? "checkmark-done-circle"
                     : conversaSelecionada.status === "aceita"
                     ? "checkmark-circle"
                     : conversaSelecionada.status === "recusada"
@@ -1084,112 +1150,149 @@ export default function ContatoScreen() {
               )}
             </View>
 
-            <View style={styles.actionsContainer}>
-              <Pressable
-                style={[
-                  styles.actionButton,
-                  styles.acceptButton,
-                  (salvandoAcao ||
+            <View
+              style={[
+                styles.chatBottomArea,
+                {
+                  paddingBottom:
+                    Platform.OS === "ios"
+                      ? Math.max(insets.bottom, 8)
+                      : 6,
+                },
+              ]}
+            >
+              <View style={styles.actionsContainer}>
+                <Pressable
+                  style={[
+                    styles.actionButton,
+                    styles.acceptButton,
+                    (salvandoAcao ||
+                      !conversaSelecionada ||
+                      euJaAceitei ||
+                      conversaSelecionada?.status === "recusada" ||
+                      conversaSelecionada?.status === "aceita" ||
+                      detalhesViagemSelecionada.statusViagem === "cancelada" ||
+                      detalhesViagemSelecionada.statusViagem === "concluida") &&
+                      styles.disabledButton,
+                  ]}
+                  onPress={handleAcceptRide}
+                  disabled={
+                    salvandoAcao ||
                     !conversaSelecionada ||
                     euJaAceitei ||
                     conversaSelecionada?.status === "recusada" ||
-                    conversaSelecionada?.status === "aceita") &&
-                    styles.disabledButton,
-                ]}
-                onPress={handleAcceptRide}
-                disabled={
-                  salvandoAcao ||
-                  !conversaSelecionada ||
-                  euJaAceitei ||
-                  conversaSelecionada?.status === "recusada" ||
-                  conversaSelecionada?.status === "aceita"
-                }
-              >
-                <Ionicons
-                  name="checkmark-circle-outline"
-                  size={18}
-                  color="#FFFFFF"
-                />
-                <Text style={styles.actionButtonText}>
-                  {!conversaSelecionada
-                    ? "Sem conversa"
-                    : conversaSelecionada?.status === "aceita"
-                    ? "Carona fechada"
-                    : euJaAceitei
-                    ? "Você já aceitou"
-                    : "Aceitar carona"}
-                </Text>
-              </Pressable>
+                    conversaSelecionada?.status === "aceita" ||
+                    detalhesViagemSelecionada.statusViagem === "cancelada" ||
+                    detalhesViagemSelecionada.statusViagem === "concluida"
+                  }
+                >
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={18}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.actionButtonText}>
+                    {!conversaSelecionada
+                      ? "Sem conversa"
+                      : detalhesViagemSelecionada.statusViagem === "cancelada"
+                      ? "Carona cancelada"
+                      : detalhesViagemSelecionada.statusViagem === "concluida"
+                      ? "Carona concluída"
+                      : conversaSelecionada?.status === "aceita"
+                      ? "Carona fechada"
+                      : euJaAceitei
+                      ? "Você já aceitou"
+                      : "Aceitar carona"}
+                  </Text>
+                </Pressable>
 
-              <Pressable
-                style={[
-                  styles.actionButton,
-                  styles.rejectButton,
-                  (salvandoAcao ||
+                <Pressable
+                  style={[
+                    styles.actionButton,
+                    styles.rejectButton,
+                    (salvandoAcao ||
+                      !conversaSelecionada ||
+                      conversaSelecionada?.status === "recusada" ||
+                      detalhesViagemSelecionada.statusViagem === "cancelada" ||
+                      detalhesViagemSelecionada.statusViagem === "concluida") &&
+                      styles.disabledButton,
+                  ]}
+                  onPress={handleRejectRide}
+                  disabled={
+                    salvandoAcao ||
                     !conversaSelecionada ||
-                    conversaSelecionada?.status === "recusada") &&
-                    styles.disabledButton,
-                ]}
-                onPress={handleRejectRide}
-                disabled={
-                  salvandoAcao ||
-                  !conversaSelecionada ||
-                  conversaSelecionada?.status === "recusada"
-                }
-              >
-                <Ionicons
-                  name="close-circle-outline"
-                  size={18}
-                  color="#FFFFFF"
-                />
-                <Text style={styles.actionButtonText}>
-                  {!conversaSelecionada
-                    ? "Sem conversa"
-                    : conversaSelecionada?.status === "recusada"
-                    ? "Conversa encerrada"
-                    : "Recusar carona"}
-                </Text>
-              </Pressable>
-            </View>
+                    conversaSelecionada?.status === "recusada" ||
+                    detalhesViagemSelecionada.statusViagem === "cancelada" ||
+                    detalhesViagemSelecionada.statusViagem === "concluida"
+                  }
+                >
+                  <Ionicons
+                    name="close-circle-outline"
+                    size={18}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.actionButtonText}>
+                    {!conversaSelecionada
+                      ? "Sem conversa"
+                      : detalhesViagemSelecionada.statusViagem === "cancelada"
+                      ? "Carona cancelada"
+                      : detalhesViagemSelecionada.statusViagem === "concluida"
+                      ? "Carona concluída"
+                      : conversaSelecionada?.status === "recusada"
+                      ? "Conversa encerrada"
+                      : "Recusar carona"}
+                  </Text>
+                </Pressable>
+              </View>
 
-            <View
-              style={[
-                styles.inputWrapper,
-                !podeEnviarMensagem && styles.inputWrapperDisabled,
-              ]}
-            >
-              <TextInput
-                value={input}
-                onChangeText={setInput}
-                placeholder={
-                  !conversaSelecionada
-                    ? "Selecione ou inicie uma conversa..."
-                    : podeEnviarMensagem
-                    ? "Digite sua mensagem..."
-                    : "Essa conversa está encerrada."
-                }
-                placeholderTextColor="#94A3B8"
-                style={styles.input}
-                multiline
-                editable={podeEnviarMensagem && !enviandoMensagem}
-                onFocus={() => {
-                  setTimeout(() => {
-                    scrollRef.current?.scrollToEnd({ animated: true });
-                  }, 180);
-                }}
-              />
-
-              <Pressable
-                style={[
-                  styles.sendButton,
-                  (!podeEnviarMensagem || enviandoMensagem) &&
-                    styles.disabledButton,
-                ]}
-                onPress={handleSendMessage}
-                disabled={!podeEnviarMensagem || enviandoMensagem}
+              <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                keyboardVerticalOffset={Platform.OS === "ios" ? insets.bottom : 0}
               >
-                <Ionicons name="send" size={20} color="#FFFFFF" />
-              </Pressable>
+                <View
+                  style={[
+                    styles.inputWrapper,
+                    !podeEnviarMensagem && styles.inputWrapperDisabled,
+                  ]}
+                >
+                  <TextInput
+                    value={input}
+                    onChangeText={setInput}
+                    placeholder={
+                      !conversaSelecionada
+                        ? "Selecione ou inicie uma conversa..."
+                        : detalhesViagemSelecionada.statusViagem === "cancelada"
+                        ? "Essa carona foi cancelada."
+                        : detalhesViagemSelecionada.statusViagem === "concluida"
+                        ? "Essa carona já foi concluída."
+                        : podeEnviarMensagem
+                        ? "Digite sua mensagem..."
+                        : "Essa conversa está encerrada."
+                    }
+                    placeholderTextColor="#94A3B8"
+                    style={styles.input}
+                    multiline
+                    editable={podeEnviarMensagem && !enviandoMensagem}
+                    onFocus={() => {
+                      setTimeout(() => {
+                        scrollRef.current?.scrollToEnd({ animated: true });
+                      }, 180);
+                    }}
+                  />
+
+                  <Pressable
+                    style={[
+                      styles.sendButton,
+                      (!podeEnviarMensagem || enviandoMensagem) &&
+                        styles.disabledButton,
+                    ]}
+                    onPress={handleSendMessage}
+                    disabled={!podeEnviarMensagem || enviandoMensagem}
+                  >
+                    <Ionicons name="send" size={20} color="#FFFFFF" />
+                  </Pressable>
+                </View>
+              </KeyboardAvoidingView>
             </View>
           </View>
         </View>
@@ -1621,6 +1724,11 @@ const styles = StyleSheet.create({
   messageTimeOther: {
     color: "#94A3B8",
     textAlign: "right",
+  },
+
+  chatBottomArea: {
+    paddingTop: 6,
+    flexShrink: 0,
   },
 
   actionsContainer: {

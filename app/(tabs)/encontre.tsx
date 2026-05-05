@@ -51,6 +51,8 @@ type Viagem = {
   agendamentos?: Agendamento[];
   usuario?: Usuario;
   tipoUsuario?: string;
+  statusViagem?: "pendente" | "aceita" | "recusada" | "concluida" | "cancelada";
+  cancelada?: boolean;
 };
 
 type FiltroTipo = "todos" | "motorista" | "passageiro";
@@ -59,6 +61,10 @@ const baseURL =
   typeof window !== "undefined" && window.location.hostname.includes("localhost")
     ? "http://localhost:3000/api"
     : "https://projeto-faculride.onrender.com/api";
+
+function getStatusViagem(viagem: Viagem) {
+  return String(viagem?.statusViagem || "").trim().toLowerCase();
+}
 
 function escapeHtml(value: string) {
   return value
@@ -842,6 +848,12 @@ export default function EncontreScreen() {
 
   const viagensFiltradas = useMemo(() => {
     return viagens.filter((v) => {
+
+      const status = getStatusViagem(v);
+      if (status !== "pendente") {
+        return false;
+      }
+
       if (!v.partida || !v.destino) return false;
 
       const tipo = tipoNormalizado(v);
@@ -863,7 +875,7 @@ export default function EncontreScreen() {
     });
   }, [viagens, filtroTipo, somenteProximas, minhaCidade, tipoNormalizado]);
 
-  const abrirContato = useCallback(
+    const abrirContato = useCallback(
     (viagem: Viagem) => {
       const nome = pegarNomeUsuario(viagem);
       const telefone = pegarTelefoneUsuario(viagem);
@@ -954,6 +966,73 @@ export default function EncontreScreen() {
               } catch (error) {
                 console.error("Erro ao excluir carona:", error);
                 Alert.alert("Erro", "Não foi possível excluir a carona.");
+              } finally {
+                setExcluindoId(null);
+              }
+            },
+          },
+        ]
+      );
+    },
+    [carregarDados, viagemSelecionada]
+  );
+
+  const cancelarCarona = useCallback(
+    (viagem: Viagem) => {
+      const idViagem = String(viagem.idViagem ?? viagem.id ?? "");
+
+      if (!idViagem) {
+        Alert.alert("Erro", "Não foi possível identificar esta carona.");
+        return;
+      }
+
+      Alert.alert(
+        "Cancelar carona",
+        "Tem certeza que deseja cancelar esta carona?",
+        [
+          { text: "Voltar", style: "cancel" },
+          {
+            text: "Cancelar carona",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                setExcluindoId(idViagem);
+
+                const token = await AsyncStorage.getItem("token");
+
+                const headers: HeadersInit = {
+                  "Content-Type": "application/json",
+                };
+
+                if (token) {
+                  headers.Authorization = `Bearer ${token}`;
+                }
+
+                const response = await fetch(`${baseURL}/viagem/${idViagem}/cancelar`, {
+                  method: "PATCH",
+                  headers,
+                });
+
+                const payload = await response.json().catch(() => null);
+
+                if (!response.ok) {
+                  throw new Error(
+                    payload?.erro || "Não foi possível cancelar a carona."
+                  );
+                }
+
+                if (
+                  viagemSelecionada &&
+                  String(viagemSelecionada.idViagem ?? viagemSelecionada.id ?? "") === idViagem
+                ) {
+                  setViagemSelecionada(null);
+                }
+
+                Alert.alert("Sucesso", "Carona cancelada com sucesso.");
+                carregarDados(true);
+              } catch (error: any) {
+                console.error("Erro ao cancelar carona:", error);
+                Alert.alert("Erro", error?.message || "Não foi possível cancelar a carona.");
               } finally {
                 setExcluindoId(null);
               }
@@ -1058,6 +1137,19 @@ export default function EncontreScreen() {
 
                 <TouchableOpacity
                   style={[
+                    styles.cancelButton,
+                    excluindoId === idViagem && styles.buttonDisabled,
+                  ]}
+                  onPress={() => cancelarCarona(item)}
+                  disabled={excluindoId === idViagem}
+                >
+                  <Text style={styles.cancelButtonText}>
+                    {excluindoId === idViagem ? "Processando..." : "Cancelar"}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
                     styles.deleteButton,
                     excluindoId === idViagem && styles.buttonDisabled,
                   ]}
@@ -1085,6 +1177,7 @@ export default function EncontreScreen() {
       abrirContato,
       editarCarona,
       excluirCarona,
+      cancelarCarona,
       excluindoId,
       formatarDatasResumo,
       meuId,
@@ -1115,7 +1208,7 @@ export default function EncontreScreen() {
     );
   }
 
-  return (
+    return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <FlatList
         ref={flatListRef}
@@ -1198,6 +1291,15 @@ export default function EncontreScreen() {
                         >
                           <Text style={styles.selectedEditButtonText}>
                             Editar carona
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.selectedCancelButton}
+                          onPress={() => cancelarCarona(viagemSelecionada)}
+                        >
+                          <Text style={styles.selectedCancelButtonText}>
+                            Cancelar
                           </Text>
                         </TouchableOpacity>
 
@@ -1467,6 +1569,24 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
+  selectedCancelButton: {
+    borderRadius: 12,
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FDBA74",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 96,
+  },
+
+  selectedCancelButtonText: {
+    color: "#C2410C",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
   selectedDeleteButton: {
     borderRadius: 12,
     backgroundColor: "#FEF2F2",
@@ -1677,6 +1797,24 @@ const styles = StyleSheet.create({
   },
 
   editButtonText: {
+    color: "#C2410C",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
+  cancelButton: {
+    borderRadius: 12,
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FDBA74",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 96,
+  },
+
+  cancelButtonText: {
     color: "#C2410C",
     fontSize: 13,
     fontWeight: "700",

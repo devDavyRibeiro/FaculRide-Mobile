@@ -21,6 +21,10 @@ type Usuario = {
   tipo_usuario?: string;
 };
 
+type Agendamento = {
+  data?: string;
+};
+
 type Viagem = {
   idViagem?: number;
   id?: number;
@@ -33,23 +37,46 @@ type Viagem = {
   diasAgendados?: string[];
   datasAgendadas?: string[];
   datasRota?: string[];
+  viajem_agendada?: Agendamento[];
+  viajemAgendada?: Agendamento[];
+  agendamentos?: Agendamento[];
   tipoUsuario?: string;
   usuario?: Usuario;
+  statusViagem?: "pendente" | "aceita" | "recusada" | "concluida" | "cancelada";
+  cancelada?: boolean;
 };
 
 type Avaliacao = {
+  ID_Avaliacao?: number;
   ID_Avaliador?: number;
   ID_Avaliado?: number;
+  ID_Viagem?: number;
   Comentario?: string;
   Estrelas?: number;
   nomeAvaliador?: string;
   nomeAvaliado?: string;
+  partidaViagem?: string;
+  destinoViagem?: string;
+};
+
+type Conversa = {
+  idConversa: number;
+  idViagem: number;
+  idMotorista: number;
+  idPassageiro: number;
+  status: "pendente" | "aguardando_confirmacao" | "aceita" | "recusada" | string;
+  aceiteMotorista?: boolean;
+  aceitePassageiro?: boolean;
 };
 
 const baseURL =
   typeof window !== "undefined" && window.location.hostname.includes("localhost")
     ? "http://localhost:3000/api"
     : "https://projeto-faculride.onrender.com/api";
+
+function getStatusViagem(viagem: Viagem) {
+  return String(viagem?.statusViagem || "").trim().toLowerCase();
+}
 
 function escapeHtml(value: string) {
   return value
@@ -577,7 +604,37 @@ export default function AtividadesScreen() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [viagens, setViagens] = useState<Viagem[]>([]);
   const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
+  const [conversas, setConversas] = useState<Conversa[]>([]);
   const [viagemSelecionada, setViagemSelecionada] = useState<Viagem | null>(null);
+
+  const normalizarDatasViagem = useCallback((v: Viagem): string[] => {
+    const datas: string[] = [];
+
+    if (Array.isArray(v?.diasAgendados)) datas.push(...v.diasAgendados);
+    if (Array.isArray(v?.datasAgendadas)) datas.push(...v.datasAgendadas);
+    if (Array.isArray(v?.datasRota)) datas.push(...v.datasRota);
+
+    const agendamentos =
+      Array.isArray(v?.viajem_agendada)
+        ? v.viajem_agendada
+        : Array.isArray(v?.viajemAgendada)
+          ? v.viajemAgendada
+          : Array.isArray(v?.agendamentos)
+            ? v.agendamentos
+            : [];
+
+    agendamentos.forEach((a) => {
+      if (a?.data) {
+        datas.push(String(a.data).slice(0, 10));
+      }
+    });
+
+    return [...new Set(
+      datas
+        .filter((d): d is string => typeof d === "string" && d.length >= 10)
+        .map((d) => d.slice(0, 10))
+    )].sort((a, b) => a.localeCompare(b));
+  }, []);
 
   const carregarDados = useCallback(async () => {
     try {
@@ -600,23 +657,34 @@ export default function AtividadesScreen() {
         headers.Authorization = `Bearer ${token}`;
       }
 
-      const [resUsuarios, resViagens, resAvaliacoes] = await Promise.all([
+      const [resUsuarios, resViagens, resAvaliacoes, resConversas] = await Promise.all([
         fetch(`${baseURL}/usuario`, { headers }),
         fetch(`${baseURL}/viagem`, { headers }),
         fetch(`${baseURL}/avaliacao`, { headers }),
+        fetch(`${baseURL}/conversas`, { headers }),
       ]);
 
       if (!resUsuarios.ok) throw new Error("Erro ao carregar usuários");
       if (!resViagens.ok) throw new Error("Erro ao carregar viagens");
       if (!resAvaliacoes.ok) throw new Error("Erro ao carregar avaliações");
+      if (!resConversas.ok) throw new Error("Erro ao carregar conversas");
 
       const usuariosJson = await resUsuarios.json();
       const viagensJson = await resViagens.json();
       const avaliacoesJson = await resAvaliacoes.json();
+      const conversasJson = await resConversas.json();
+
+      const viagensNormalizadas = Array.isArray(viagensJson)
+        ? viagensJson.map((v: Viagem) => ({
+            ...v,
+            diasAgendados: normalizarDatasViagem(v),
+          }))
+        : [];
 
       setUsuarios(Array.isArray(usuariosJson) ? usuariosJson : []);
-      setViagens(Array.isArray(viagensJson) ? viagensJson : []);
+      setViagens(viagensNormalizadas);
       setAvaliacoes(Array.isArray(avaliacoesJson) ? avaliacoesJson : []);
+      setConversas(Array.isArray(conversasJson) ? conversasJson : []);
     } catch (error) {
       console.error("Erro ao carregar atividades:", error);
       Alert.alert("Erro", "Não foi possível carregar suas atividades.");
@@ -624,7 +692,7 @@ export default function AtividadesScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [normalizarDatasViagem]);
 
   useEffect(() => {
     carregarDados();
@@ -675,11 +743,7 @@ export default function AtividadesScreen() {
   );
 
   const formatarDatas = useCallback((viagem: Viagem) => {
-    const datas =
-      viagem?.diasAgendados ||
-      viagem?.datasAgendadas ||
-      viagem?.datasRota ||
-      [];
+    const datas = viagem?.diasAgendados || viagem?.datasAgendadas || viagem?.datasRota || [];
 
     if (!Array.isArray(datas) || datas.length === 0) return "";
 
@@ -690,6 +754,51 @@ export default function AtividadesScreen() {
         return `${dia}/${mes}`;
       })
       .join(", ");
+  }, []);
+
+  const obterStatusViagem = useCallback(
+    (viagem: Viagem) => {
+      const statusBack = getStatusViagem(viagem);
+
+      if (statusBack === "aceita") return "Aceita";
+      if (statusBack === "recusada") return "Recusada";
+      if (statusBack === "concluida") return "Concluída";
+      if (statusBack === "cancelada") return "Cancelada";
+      if (statusBack === "pendente") return "Pendente";
+
+      const idViagem = Number(viagem.idViagem ?? viagem.id ?? 0);
+      const conversa = conversas.find(
+        (c) => Number(c.idViagem) === idViagem
+      );
+
+      if (conversa?.status === "aceita") return "Aceita";
+      if (conversa?.status === "recusada") return "Recusada";
+      if (conversa?.status === "aguardando_confirmacao") {
+        return "Aguardando confirmação";
+      }
+      if (conversa?.status === "pendente") return "Pendente";
+
+      const datas = normalizarDatasViagem(viagem);
+      if (datas.length > 0 && viagem.horarioSaida) {
+        const ultimaData = datas[datas.length - 1];
+        const dataHora = new Date(`${ultimaData}T${viagem.horarioSaida}`);
+        if (dataHora.getTime() < Date.now()) {
+          return "Concluída";
+        }
+      }
+
+      return "Pendente";
+    },
+    [conversas, normalizarDatasViagem]
+  );
+
+  const corStatusViagem = useCallback((status: string) => {
+    if (status === "Aceita") return "#16A34A";
+    if (status === "Recusada") return "#DC2626";
+    if (status === "Aguardando confirmação") return "#F59E0B";
+    if (status === "Concluída") return "#2563EB";
+    if (status === "Cancelada") return "#6B7280";
+    return "#64748B";
   }, []);
 
   const minhasViagens = useMemo(() => {
@@ -705,27 +814,71 @@ export default function AtividadesScreen() {
     return minhasViagens.filter((v) => tipoNormalizado(v) === "passageiro");
   }, [minhasViagens, tipoNormalizado]);
 
+  const caronasAceitasDeOutros = useMemo(() => {
+    if (!meuId) return [];
+
+    const idsAdicionados = new Set<number>();
+
+    return conversas
+      .filter((c) => Number(c.idPassageiro) === Number(meuId))
+      .filter((c) => Number(c.idMotorista) !== Number(meuId))
+      .filter(
+        (c) =>
+          c.status === "aceita" ||
+          c.status === "aguardando_confirmacao" ||
+          c.status === "pendente" ||
+          c.aceitePassageiro === true
+      )
+      .map((c) =>
+        viagens.find((v) => Number(v.idViagem ?? v.id) === Number(c.idViagem))
+      )
+      .filter((v): v is Viagem => !!v)
+      .filter((v) => Number(v.idUsuario) !== Number(meuId))
+      .filter((v) => {
+        const id = Number(v.idViagem ?? v.id ?? 0);
+        if (!id || idsAdicionados.has(id)) return false;
+        idsAdicionados.add(id);
+        return true;
+      });
+  }, [conversas, viagens, meuId]);
+
   const avaliacoesRecebidas = useMemo(() => {
     if (!meuId) return [];
 
     return avaliacoes
       .filter((a) => Number(a.ID_Avaliado) === Number(meuId))
-      .map((a) => ({
-        ...a,
-        nomeAvaliador: pegarNomeUsuario(a.ID_Avaliador),
-      }));
-  }, [avaliacoes, meuId, pegarNomeUsuario]);
+      .map((a) => {
+        const viagem = viagens.find(
+          (v) => Number(v.idViagem ?? v.id) === Number(a.ID_Viagem)
+        );
+
+        return {
+          ...a,
+          nomeAvaliador: pegarNomeUsuario(a.ID_Avaliador),
+          partidaViagem: viagem?.partida || "",
+          destinoViagem: viagem?.destino || "",
+        };
+      });
+  }, [avaliacoes, meuId, pegarNomeUsuario, viagens]);
 
   const avaliacoesEnviadas = useMemo(() => {
     if (!meuId) return [];
 
     return avaliacoes
       .filter((a) => Number(a.ID_Avaliador) === Number(meuId))
-      .map((a) => ({
-        ...a,
-        nomeAvaliado: pegarNomeUsuario(a.ID_Avaliado),
-      }));
-  }, [avaliacoes, meuId, pegarNomeUsuario]);
+      .map((a) => {
+        const viagem = viagens.find(
+          (v) => Number(v.idViagem ?? v.id) === Number(a.ID_Viagem)
+        );
+
+        return {
+          ...a,
+          nomeAvaliado: pegarNomeUsuario(a.ID_Avaliado),
+          partidaViagem: viagem?.partida || "",
+          destinoViagem: viagem?.destino || "",
+        };
+      });
+  }, [avaliacoes, meuId, pegarNomeUsuario, viagens]);
 
   const limparSelecao = useCallback(() => {
     setViagemSelecionada(null);
@@ -734,6 +887,7 @@ export default function AtividadesScreen() {
   const renderCardViagem = useCallback(
     (viagem: Viagem, titulo: string, key: string) => {
       const datas = formatarDatas(viagem);
+      const status = obterStatusViagem(viagem);
       const selecionada =
         String(viagemSelecionada?.idViagem ?? viagemSelecionada?.id ?? "") ===
         String(viagem.idViagem ?? viagem.id ?? "");
@@ -754,6 +908,25 @@ export default function AtividadesScreen() {
             <Text style={styles.cardActionText}>
               {selecionada ? "Selecionada" : "Ver rota"}
             </Text>
+          </View>
+
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>Situação:</Text>
+            <View
+              style={[
+                styles.statusBadge,
+                { backgroundColor: `${corStatusViagem(status)}18` },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statusBadgeText,
+                  { color: corStatusViagem(status) },
+                ]}
+              >
+                {status}
+              </Text>
+            </View>
           </View>
 
           <Text style={styles.info}>
@@ -787,7 +960,7 @@ export default function AtividadesScreen() {
         </TouchableOpacity>
       );
     },
-    [formatarDatas, viagemSelecionada]
+    [formatarDatas, viagemSelecionada, obterStatusViagem, corStatusViagem]
   );
 
   if (loading) {
@@ -864,7 +1037,9 @@ export default function AtividadesScreen() {
 
         <Text style={styles.sectionTitle}>Minhas Caronas</Text>
 
-        {caronasOferecidas.length === 0 && caronasProcuradas.length === 0 ? (
+        {caronasOferecidas.length === 0 &&
+        caronasProcuradas.length === 0 &&
+        caronasAceitasDeOutros.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyText}>
               Você ainda não possui caronas registradas.
@@ -887,6 +1062,14 @@ export default function AtividadesScreen() {
                 `procurada-${viagem.idViagem ?? viagem.id ?? index}`
               )
             )}
+
+            {caronasAceitasDeOutros.map((viagem, index) =>
+              renderCardViagem(
+                viagem,
+                "Carona Aceita",
+                `aceita-${viagem.idViagem ?? viagem.id ?? index}`
+              )
+            )}
           </>
         )}
 
@@ -901,12 +1084,19 @@ export default function AtividadesScreen() {
         ) : (
           avaliacoesRecebidas.map((avaliacao, index) => (
             <View
-              key={`recebida-${avaliacao.ID_Avaliador ?? index}`}
+              key={`recebida-${avaliacao.ID_Avaliacao ?? avaliacao.ID_Avaliador ?? index}`}
               style={styles.card}
             >
               <Text style={styles.cardTitle}>
                 De: {avaliacao.nomeAvaliador || "Usuário"}
               </Text>
+
+              {!!avaliacao.partidaViagem && !!avaliacao.destinoViagem && (
+                <Text style={styles.info}>
+                  <Text style={styles.label}>Viagem:</Text>{" "}
+                  {avaliacao.partidaViagem} → {avaliacao.destinoViagem}
+                </Text>
+              )}
 
               <Text style={styles.info}>
                 <Text style={styles.label}>Nota:</Text> ⭐{" "}
@@ -932,12 +1122,19 @@ export default function AtividadesScreen() {
         ) : (
           avaliacoesEnviadas.map((avaliacao, index) => (
             <View
-              key={`enviada-${avaliacao.ID_Avaliado ?? index}`}
+              key={`enviada-${avaliacao.ID_Avaliacao ?? avaliacao.ID_Avaliado ?? index}`}
               style={styles.card}
             >
               <Text style={styles.cardTitle}>
                 Para: {avaliacao.nomeAvaliado || "Usuário"}
               </Text>
+
+              {!!avaliacao.partidaViagem && !!avaliacao.destinoViagem && (
+                <Text style={styles.info}>
+                  <Text style={styles.label}>Viagem:</Text>{" "}
+                  {avaliacao.partidaViagem} → {avaliacao.destinoViagem}
+                </Text>
+              )}
 
               <Text style={styles.info}>
                 <Text style={styles.label}>Nota:</Text> ⭐{" "}
@@ -1076,6 +1273,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 8,
     gap: 10,
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 10,
+  },
+  statusLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   cardTitle: {
     fontSize: 16,
