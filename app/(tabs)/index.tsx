@@ -18,6 +18,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+import { API_URL } from "../../src/constants/api";
 
 const { height } = Dimensions.get("window");
 
@@ -95,11 +96,6 @@ type Conversa = {
 };
 
 type FiltroTipo = "todos" | "motorista" | "passageiro";
-
-const baseURL =
-  typeof window !== "undefined" && window.location.hostname.includes("localhost")
-    ? "http://localhost:3000/api"
-    : "https://projeto-faculride.onrender.com/api";
 
 function getTripId(viagem: Viagem) {
   return String(viagem.idViagem ?? viagem.id ?? "");
@@ -857,10 +853,10 @@ export default function HomeScreen() {
       }
 
       const [resViagens, resUsuarios, resAvaliacoes, resConversas] = await Promise.all([
-        fetch(`${baseURL}/viagem`, { headers }),
-        fetch(`${baseURL}/usuario`, { headers }),
-        fetch(`${baseURL}/avaliacao`, { headers }),
-        fetch(`${baseURL}/conversas`, { headers }),
+        fetch(`${API_URL}/viagem`, { headers }),
+        fetch(`${API_URL}/usuario`, { headers }),
+        fetch(`${API_URL}/avaliacao`, { headers }),
+        fetch(`${API_URL}/conversas`, { headers }),
       ]);
 
       if (!resViagens.ok) {
@@ -1276,7 +1272,7 @@ export default function HomeScreen() {
         Estrelas: estrelas,
       };
 
-      const response = await fetch(`${baseURL}/avaliacao`, {
+      const response = await fetch(`${API_URL}/avaliacao`, {
         method: "POST",
         headers,
         body: JSON.stringify(body),

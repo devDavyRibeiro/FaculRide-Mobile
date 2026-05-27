@@ -26,6 +26,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { API_URL } from "../../src/constants/api";
 
 type LocalUser = {
   id?: number;
@@ -86,11 +87,6 @@ type Mensagem = {
     fotoPath?: string;
   };
 };
-
-const baseURL =
-  typeof window !== "undefined" && window.location.hostname.includes("localhost")
-    ? "http://localhost:3000/api"
-    : "https://projeto-faculride.onrender.com/api";
 
 function normalizarParamString(valor: unknown): string {
   if (Array.isArray(valor)) return valor[0] || "";
@@ -276,7 +272,7 @@ export default function ContatoScreen() {
 
   const listarConversas = useCallback(async () => {
     const headers = await obterHeaders();
-    const response = await fetch(`${baseURL}/conversas`, { headers });
+    const response = await fetch(`${API_URL}/conversas`, { headers });
 
     if (!response.ok) {
       throw new Error("Não foi possível carregar as conversas.");
@@ -296,7 +292,7 @@ export default function ContatoScreen() {
 
         const headers = await obterHeaders();
         const response = await fetch(
-          `${baseURL}/conversas/${idConversa}/mensagens`,
+          `${API_URL}/conversas/${idConversa}/mensagens`,
           { headers }
         );
 
@@ -335,7 +331,7 @@ export default function ContatoScreen() {
     try {
       const headers = await obterHeaders();
 
-      const response = await fetch(`${baseURL}/conversas/iniciar`, {
+      const response = await fetch(`${API_URL}/conversas/iniciar`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -677,7 +673,7 @@ export default function ContatoScreen() {
 
       const headers = await obterHeaders();
 
-      const response = await fetch(`${baseURL}/conversas/mensagem`, {
+      const response = await fetch(`${API_URL}/conversas/mensagem`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -721,7 +717,7 @@ export default function ContatoScreen() {
       const headers = await obterHeaders();
 
       const response = await fetch(
-        `${baseURL}/conversas/${conversaSelecionada.idConversa}/aceitar`,
+        `${API_URL}/conversas/${conversaSelecionada.idConversa}/aceitar`,
         {
           method: "PATCH",
           headers,
@@ -781,7 +777,7 @@ export default function ContatoScreen() {
               const headers = await obterHeaders();
 
               const response = await fetch(
-                `${baseURL}/conversas/${conversaSelecionada.idConversa}/recusar`,
+                `${API_URL}/conversas/${conversaSelecionada.idConversa}/recusar`,
                 {
                   method: "PATCH",
                   headers,

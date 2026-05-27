@@ -16,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { API_URL } from "../../src/constants/api";
 
 type DiaCalendario = {
   dia: number;
@@ -30,11 +31,6 @@ type CalendarioMes = {
 };
 
 type ModoVigencia = "mensal" | "semestre";
-
-const baseURL =
-  typeof window !== "undefined" && window.location.hostname.includes("localhost")
-    ? "http://localhost:3000/api"
-    : "https://projeto-faculride.onrender.com/api";
 
 function formatarHora(date: Date) {
   const horas = String(date.getHours()).padStart(2, "0");
@@ -583,8 +579,8 @@ export default function MapaScreen() {
 
       const url =
         modoEdicaoAtivo && idViagemEdicao
-          ? `${baseURL}/viagem/${idViagemEdicao}`
-          : `${baseURL}/viagem`;
+          ? `${API_URL}/viagem/${idViagemEdicao}`
+          : `${API_URL}/viagem`;
 
       const method = modoEdicaoAtivo && idViagemEdicao ? "PUT" : "POST";
 

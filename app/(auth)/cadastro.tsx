@@ -18,6 +18,7 @@ import {
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { API_URL } from '../../src/constants/api';
 
 type TipoUsuario = 'passageiro' | 'motorista';
 
@@ -28,8 +29,6 @@ type ErrosType = {
 type TouchedType = {
   [key: string]: boolean;
 };
-
-const API_BASE_URL = 'https://projeto-faculride.onrender.com';
 
 export default function CadastroScreen() {
   const [tipoUsuario, setTipoUsuario] = useState<TipoUsuario>('passageiro');
@@ -454,7 +453,7 @@ export default function CadastroScreen() {
         type: fotoMimeType || 'image/jpeg',
       } as any);
 
-      const response = await fetch(`${API_BASE_URL}/api/usuario/foto/upload`, {
+      const response = await fetch(`${API_URL}/usuario/foto/upload`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -489,7 +488,7 @@ export default function CadastroScreen() {
   }
 
   async function fazerLoginAutomatico() {
-    const response = await fetch(`${API_BASE_URL}/api/usuario/login`, {
+    const response = await fetch(`${API_URL}/usuario/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -573,7 +572,7 @@ export default function CadastroScreen() {
 
       console.log('PAYLOAD CADASTRO ENVIADO:', payload);
 
-      const response = await fetch(`${API_BASE_URL}/api/usuario`, {
+      const response = await fetch(`${API_URL}/usuario`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -19,10 +19,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { API_URL } from "../src/constants/api";
 
 type TipoUsuario = "passageiro" | "motorista";
-
-const API_BASE_URL = "https://projeto-faculride.onrender.com/api";
 
 type ErrosSenhaType = {
   senhaAtual?: string;
@@ -116,7 +115,7 @@ export default function GerenciarContaScreen() {
     // Busca dados atualizados do backend
     if (token && idUsuario) {
       try {
-        const response = await fetch(`${API_BASE_URL}/usuario/${idUsuario}`, {
+        const response = await fetch(`${API_URL}/usuario/${idUsuario}`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -452,7 +451,7 @@ export default function GerenciarContaScreen() {
   async function uploadFoto(token: string) {
     if (!fotoBase64) return;
 
-    await fetch(`${API_BASE_URL}/usuario/foto/upload`, {
+    await fetch(`${API_URL}/usuario/foto/upload`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -493,7 +492,7 @@ export default function GerenciarContaScreen() {
             style: "destructive",
             onPress: async () => {
               const response = await fetch(
-                `${API_BASE_URL}/veiculo/${idVeiculo}`,
+                `${API_URL}/veiculo/${idVeiculo}`,
                 {
                   method: "DELETE",
                   headers: {
@@ -577,7 +576,7 @@ export default function GerenciarContaScreen() {
         cnh: tipoUsuario === "motorista" ? limparNumero(cnh) : null,
       };
 
-      const responseUsuario = await fetch(`${API_BASE_URL}/usuario/${id}`, {
+      const responseUsuario = await fetch(`${API_URL}/usuario/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -620,7 +619,7 @@ export default function GerenciarContaScreen() {
 
         if (idVeiculo) {
           const responseVeiculo = await fetch(
-            `${API_BASE_URL}/veiculo/${idVeiculo}`,
+            `${API_URL}/veiculo/${idVeiculo}`,
             {
               method: "PUT",
               headers: {
@@ -667,7 +666,7 @@ export default function GerenciarContaScreen() {
           payloadVeiculo.Cor ||
           payloadVeiculo.Placa_veiculo
         ) {
-          const responseVeiculo = await fetch(`${API_BASE_URL}/veiculo`, {
+          const responseVeiculo = await fetch(`${API_URL}/veiculo`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -778,7 +777,7 @@ export default function GerenciarContaScreen() {
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/usuario/alterar-senha`, {
+      const response = await fetch(`${API_URL}/usuario/alterar-senha`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

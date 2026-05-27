@@ -1,0 +1,1 @@
+export const API_URL = "http://faculride-api.duckdns.org/api";

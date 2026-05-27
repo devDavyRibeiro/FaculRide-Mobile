@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+import { API_URL } from "../../src/constants/api";
 
 type Usuario = {
   id?: number;
@@ -56,11 +57,6 @@ type Viagem = {
 };
 
 type FiltroTipo = "todos" | "motorista" | "passageiro";
-
-const baseURL =
-  typeof window !== "undefined" && window.location.hostname.includes("localhost")
-    ? "http://localhost:3000/api"
-    : "https://projeto-faculride.onrender.com/api";
 
 function getStatusViagem(viagem: Viagem) {
   return String(viagem?.statusViagem || "").trim().toLowerCase();
@@ -669,8 +665,8 @@ export default function EncontreScreen() {
       }
 
       const [resViagens, resUsuarios] = await Promise.all([
-        fetch(`${baseURL}/viagem`, { headers }),
-        fetch(`${baseURL}/usuario`, { headers }),
+        fetch(`${API_URL}/viagem`, { headers }),
+        fetch(`${API_URL}/usuario`, { headers }),
       ]);
 
       if (!resViagens.ok) {
@@ -945,7 +941,7 @@ export default function EncontreScreen() {
                   headers.Authorization = `Bearer ${token}`;
                 }
 
-                const response = await fetch(`${baseURL}/viagem/${idViagem}`, {
+                const response = await fetch(`${API_URL}/viagem/${idViagem}`, {
                   method: "DELETE",
                   headers,
                 });
@@ -1008,7 +1004,7 @@ export default function EncontreScreen() {
                   headers.Authorization = `Bearer ${token}`;
                 }
 
-                const response = await fetch(`${baseURL}/viagem/${idViagem}/cancelar`, {
+                const response = await fetch(`${API_URL}/viagem/${idViagem}/cancelar`, {
                   method: "PATCH",
                   headers,
                 });

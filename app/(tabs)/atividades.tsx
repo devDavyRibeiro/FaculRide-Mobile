@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+import { API_URL } from "../../src/constants/api";
 
 type Usuario = {
   id?: number;
@@ -68,11 +69,6 @@ type Conversa = {
   aceiteMotorista?: boolean;
   aceitePassageiro?: boolean;
 };
-
-const baseURL =
-  typeof window !== "undefined" && window.location.hostname.includes("localhost")
-    ? "http://localhost:3000/api"
-    : "https://projeto-faculride.onrender.com/api";
 
 function getStatusViagem(viagem: Viagem) {
   return String(viagem?.statusViagem || "").trim().toLowerCase();
@@ -658,10 +654,10 @@ export default function AtividadesScreen() {
       }
 
       const [resUsuarios, resViagens, resAvaliacoes, resConversas] = await Promise.all([
-        fetch(`${baseURL}/usuario`, { headers }),
-        fetch(`${baseURL}/viagem`, { headers }),
-        fetch(`${baseURL}/avaliacao`, { headers }),
-        fetch(`${baseURL}/conversas`, { headers }),
+        fetch(`${API_URL}/usuario`, { headers }),
+        fetch(`${API_URL}/viagem`, { headers }),
+        fetch(`${API_URL}/avaliacao`, { headers }),
+        fetch(`${API_URL}/conversas`, { headers }),
       ]);
 
       if (!resUsuarios.ok) throw new Error("Erro ao carregar usuários");
