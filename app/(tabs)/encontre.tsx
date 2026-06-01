@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+import { API_URL } from "../../src/constants/api";
 
 type Usuario = {
   id?: number;
@@ -51,14 +52,15 @@ type Viagem = {
   agendamentos?: Agendamento[];
   usuario?: Usuario;
   tipoUsuario?: string;
+  statusViagem?: "pendente" | "aceita" | "recusada" | "concluida" | "cancelada";
+  cancelada?: boolean;
 };
 
 type FiltroTipo = "todos" | "motorista" | "passageiro";
 
-const baseURL =
-  typeof window !== "undefined" && window.location.hostname.includes("localhost")
-    ? "http://localhost:3000/api"
-    : "https://projeto-faculride.onrender.com/api";
+function getStatusViagem(viagem: Viagem) {
+  return String(viagem?.statusViagem || "").trim().toLowerCase();
+}
 
 function escapeHtml(value: string) {
   return value
@@ -75,7 +77,6 @@ function criarHtmlMiniMapa(
   tag: string,
   nomeUsuario: string
 ) {
-  const tagSegura = escapeHtml(tag);
   const nomeUsuarioSeguro = escapeHtml(nomeUsuario || "Partida");
   const destinoLabelSeguro = escapeHtml(
     /fatec/i.test(destino) ? "FATEC" : destino
@@ -147,8 +148,6 @@ function criarHtmlMiniMapa(
     }
 
     .status.loading::before { background: #f59e0b; }
-    .status.ok::before { background: #16a34a; }
-    .status.warn::before { background: #2563eb; }
     .status.error::before { background: #dc2626; }
 
     .loading {
@@ -560,23 +559,16 @@ function criarHtmlMiniMapa(
 
         adicionarMarcadores(origemLatLng, destinoLatLng);
 
-        let rotaReal = false;
-
         try {
           setStatus("loading", "Montando rota...");
           await desenharRotaReal(origemGeo, destinoGeo);
-          rotaReal = true;
+          hideStatus();
         } catch (routeError) {
           desenharFallback(origemLatLng, destinoLatLng);
+          hideStatus();
         }
 
         loading.style.display = "none";
-
-        if (rotaReal) {
-          hideStatus();
-        } else {
-          hideStatus();
-        }
       } catch (e) {
         showError("Não foi possível montar a prévia desta rota.");
       }
@@ -599,6 +591,7 @@ export default function EncontreScreen() {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
 
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
   const [somenteProximas, setSomenteProximas] = useState(false);
@@ -632,17 +625,9 @@ export default function EncontreScreen() {
   const normalizarDatasViagem = useCallback((v: Viagem): string[] => {
     const datas: string[] = [];
 
-    if (Array.isArray(v?.diasAgendados)) {
-      datas.push(...v.diasAgendados);
-    }
-
-    if (Array.isArray(v?.datasAgendadas)) {
-      datas.push(...v.datasAgendadas);
-    }
-
-    if (Array.isArray(v?.datasRota)) {
-      datas.push(...v.datasRota);
-    }
+    if (Array.isArray(v?.diasAgendados)) datas.push(...v.diasAgendados);
+    if (Array.isArray(v?.datasAgendadas)) datas.push(...v.datasAgendadas);
+    if (Array.isArray(v?.datasRota)) datas.push(...v.datasRota);
 
     const agendamentos =
       Array.isArray(v?.viajem_agendada) ? v.viajem_agendada :
@@ -663,8 +648,12 @@ export default function EncontreScreen() {
     )].sort((a, b) => a.localeCompare(b));
   }, []);
 
-  const carregarDados = useCallback(async () => {
+  const carregarDados = useCallback(async (silencioso = false) => {
     try {
+      if (!silencioso) {
+        setLoading(true);
+      }
+
       const token = await AsyncStorage.getItem("token");
 
       const headers: HeadersInit = {
@@ -676,8 +665,8 @@ export default function EncontreScreen() {
       }
 
       const [resViagens, resUsuarios] = await Promise.all([
-        fetch(`${baseURL}/viagem`, { headers }),
-        fetch(`${baseURL}/usuario`, { headers }),
+        fetch(`${API_URL}/viagem`, { headers }),
+        fetch(`${API_URL}/usuario`, { headers }),
       ]);
 
       if (!resViagens.ok) {
@@ -713,9 +702,15 @@ export default function EncontreScreen() {
     carregarDados();
   }, [carregarDados]);
 
+  useFocusEffect(
+    useCallback(() => {
+      carregarDados(true);
+    }, [carregarDados])
+  );
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    carregarDados();
+    carregarDados(true);
   }, [carregarDados]);
 
   const tipoNormalizado = useCallback(
@@ -788,30 +783,33 @@ export default function EncontreScreen() {
     [pegarUsuarioDaViagem]
   );
 
-  const pegarFotoUsuario = useCallback(
+  const obterFotoUsuario = useCallback(
     (viagem: Viagem) => {
       const usuario = pegarUsuarioDaViagem(viagem);
-      return usuario?.foto || usuario?.fotoUrl || null;
+
+      if (usuario?.fotoUrl) return usuario.fotoUrl;
+      if (usuario?.foto) return usuario.foto;
+
+      return (
+        "https://ui-avatars.com/api/?name=" +
+        encodeURIComponent(pegarNomeUsuario(viagem)) +
+        "&background=0B1B35&color=ffffff"
+      );
     },
-    [pegarUsuarioDaViagem]
+    [pegarNomeUsuario, pegarUsuarioDaViagem]
   );
 
-  const pegarGeneroUsuario = useCallback(
-    (viagem: Viagem) => {
-      const usuario = pegarUsuarioDaViagem(viagem);
-      return usuario?.genero;
+  const obterDatasViagem = useCallback(
+    (viagem: Viagem): string[] => {
+      const datas = normalizarDatasViagem(viagem);
+
+      return datas
+        .filter((d): d is string => typeof d === "string" && d.length >= 10)
+        .map((d) => d.slice(0, 10))
+        .sort((a, b) => a.localeCompare(b));
     },
-    [pegarUsuarioDaViagem]
+    [normalizarDatasViagem]
   );
-
-  const obterDatasViagem = useCallback((viagem: Viagem): string[] => {
-    const datas = normalizarDatasViagem(viagem);
-
-    return datas
-      .filter((d): d is string => typeof d === "string" && d.length >= 10)
-      .map((d) => d.slice(0, 10))
-      .sort((a, b) => a.localeCompare(b));
-  }, [normalizarDatasViagem]);
 
   const formatarData = useCallback((d: string) => {
     const [, mes, dia] = d.split("-");
@@ -824,18 +822,15 @@ export default function EncontreScreen() {
 
       if (!datas.length) return "";
 
-      const mesesUnicos = new Set(
-        datas.map((d) => {
-          const [ano, mes] = d.split("-");
-          return `${ano}-${mes}`;
-        })
-      );
+      const datasOrdenadas = [...datas].sort((a, b) => a.localeCompare(b));
 
-      if (mesesUnicos.size >= 3) {
-        return "Semestral";
+      if (datasOrdenadas.length >= 20) {
+        return `Semestre fechado: ${formatarData(datasOrdenadas[0])} até ${formatarData(
+          datasOrdenadas[datasOrdenadas.length - 1]
+        )}`;
       }
 
-      return datas.map(formatarData).join(", ");
+      return datasOrdenadas.map(formatarData).join(", ");
     },
     [formatarData, obterDatasViagem]
   );
@@ -844,7 +839,36 @@ export default function EncontreScreen() {
     return usuarioLogado?.cidade?.trim().toLowerCase() || "";
   }, [usuarioLogado]);
 
-  const abrirContato = useCallback(
+  const viagensFiltradas = useMemo(() => {
+    return viagens.filter((v) => {
+
+      const status = getStatusViagem(v);
+      if (status !== "pendente") {
+        return false;
+      }
+
+      if (!v.partida || !v.destino) return false;
+
+      const tipo = tipoNormalizado(v);
+
+      if (filtroTipo !== "todos" && tipo !== filtroTipo) {
+        return false;
+      }
+
+      if (somenteProximas && minhaCidade) {
+        const partida = (v.partida || "").toLowerCase();
+        const destino = (v.destino || "").toLowerCase();
+
+        if (!partida.includes(minhaCidade) && !destino.includes(minhaCidade)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [viagens, filtroTipo, somenteProximas, minhaCidade, tipoNormalizado]);
+
+    const abrirContato = useCallback(
     (viagem: Viagem) => {
       const nome = pegarNomeUsuario(viagem);
       const telefone = pegarTelefoneUsuario(viagem);
@@ -868,7 +892,7 @@ export default function EncontreScreen() {
     [pegarNomeUsuario, pegarTelefoneUsuario, tipoNormalizado]
   );
 
-  const verRotaNoMiniMapa = useCallback((viagem: Viagem) => {
+  const mostrarRota = useCallback((viagem: Viagem) => {
     setViagemSelecionada(viagem);
 
     setTimeout(() => {
@@ -876,395 +900,452 @@ export default function EncontreScreen() {
         offset: 0,
         animated: true,
       });
-    }, 50);
+    }, 100);
   }, []);
 
-  const limparPreviaRota = useCallback(() => {
+  const limparSelecao = useCallback(() => {
     setViagemSelecionada(null);
   }, []);
 
-  const caronasDisponiveis = useMemo(() => {
-    return viagens.filter((v) => {
-      if (!v.partida || !v.destino) return false;
+  const excluirCarona = useCallback(
+    (viagem: Viagem) => {
+      const idViagem = String(viagem.idViagem ?? viagem.id ?? "");
 
-      const tipo = tipoNormalizado(v);
-
-      if (filtroTipo !== "todos" && tipo !== filtroTipo) {
-        return false;
+      if (!idViagem) {
+        Alert.alert("Erro", "Não foi possível identificar esta carona.");
+        return;
       }
 
-      if (somenteProximas && minhaCidade) {
-        const partida = (v.partida || "").toLowerCase();
-        const destino = (v.destino || "").toLowerCase();
+      Alert.alert(
+        "Excluir carona",
+        "Tem certeza que deseja excluir esta carona?",
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Excluir",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                setExcluindoId(idViagem);
 
-        if (!partida.includes(minhaCidade) && !destino.includes(minhaCidade)) {
-          return false;
-        }
-      }
+                const token = await AsyncStorage.getItem("token");
 
-      return true;
-    });
-  }, [viagens, filtroTipo, somenteProximas, minhaCidade, tipoNormalizado]);
+                const headers: HeadersInit = {
+                  "Content-Type": "application/json",
+                };
+
+                if (token) {
+                  headers.Authorization = `Bearer ${token}`;
+                }
+
+                const response = await fetch(`${API_URL}/viagem/${idViagem}`, {
+                  method: "DELETE",
+                  headers,
+                });
+
+                if (!response.ok) {
+                  throw new Error("Erro ao excluir carona");
+                }
+
+                if (
+                  viagemSelecionada &&
+                  String(viagemSelecionada.idViagem ?? viagemSelecionada.id ?? "") === idViagem
+                ) {
+                  setViagemSelecionada(null);
+                }
+
+                Alert.alert("Sucesso", "Carona excluída com sucesso.");
+                carregarDados(true);
+              } catch (error) {
+                console.error("Erro ao excluir carona:", error);
+                Alert.alert("Erro", "Não foi possível excluir a carona.");
+              } finally {
+                setExcluindoId(null);
+              }
+            },
+          },
+        ]
+      );
+    },
+    [carregarDados, viagemSelecionada]
+  );
+
+  const editarCarona = useCallback(
+    (viagem: Viagem) => {
+      router.push({
+        pathname: "/(tabs)/sua-carona",
+        params: {
+          modo: "editar",
+          editSession: String(Date.now()),
+          idViagem: String(viagem.idViagem ?? viagem.id ?? ""),
+          tipoCarona:
+            tipoNormalizado(viagem) === "motorista" ? "oferecer" : "procurar",
+          origem: viagem.partida ?? "",
+          destino: viagem.destino ?? "",
+          entradaFatec: viagem.horarioEntrada ?? "",
+          saidaFatec: viagem.horarioSaida ?? "",
+          ajudaCusto: String(viagem.ajudaDeCusto ?? "0"),
+          datasRota: JSON.stringify(obterDatasViagem(viagem)),
+        },
+      });
+    },
+    [obterDatasViagem, tipoNormalizado]
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: Viagem }) => {
+      const nome = pegarNomeUsuario(item);
+      const foto = obterFotoUsuario(item);
+      const tipo = tipoNormalizado(item);
+      const ehMinhaCarona =
+        meuId !== null && Number(item.idUsuario) === Number(meuId);
+      const idViagem = String(item.idViagem ?? item.id ?? "");
+
+      return (
+        <View style={styles.card}>
+          <View style={styles.cardTop}>
+            <Image source={{ uri: foto }} style={styles.avatar} />
+
+            <View style={styles.cardInfo}>
+              <Text style={styles.nome}>{nome}</Text>
+              <Text style={styles.tipo}>
+                {tipo === "motorista" ? "Motorista" : "Passageiro"}
+              </Text>
+
+              <Text style={styles.info}>
+                <Text style={styles.infoLabel}>Partida:</Text> {item.partida}
+              </Text>
+
+              <Text style={styles.info}>
+                <Text style={styles.infoLabel}>Destino:</Text> {item.destino}
+              </Text>
+
+              <Text style={styles.info}>
+                <Text style={styles.infoLabel}>Entrada:</Text>{" "}
+                {item.horarioEntrada || "-"}
+              </Text>
+
+              <Text style={styles.info}>
+                <Text style={styles.infoLabel}>Saída:</Text>{" "}
+                {item.horarioSaida || "-"}
+              </Text>
+
+              <Text style={styles.info}>
+                <Text style={styles.infoLabel}>Ajuda mensal:</Text> R${" "}
+                {item.ajudaDeCusto ?? "0"}
+              </Text>
+
+              {!!formatarDatasResumo(item) && (
+                <Text style={styles.info}>
+                  <Text style={styles.infoLabel}>Dias:</Text>{" "}
+                  {formatarDatasResumo(item)}
+                </Text>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => mostrarRota(item)}
+            >
+              <Text style={styles.secondaryButtonText}>Ver rota</Text>
+            </TouchableOpacity>
+
+            {ehMinhaCarona ? (
+              <>
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => editarCarona(item)}
+                >
+                  <Text style={styles.editButtonText}>Editar carona</Text>
+                </TouchableOpacity>
+
+              
+                <TouchableOpacity
+                  style={[
+                    styles.deleteButton,
+                    excluindoId === idViagem && styles.buttonDisabled,
+                  ]}
+                  onPress={() => excluirCarona(item)}
+                  disabled={excluindoId === idViagem}
+                >
+                  <Text style={styles.deleteButtonText}>
+                    {excluindoId === idViagem ? "Excluindo..." : "Excluir"}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={() => abrirContato(item)}
+              >
+                <Text style={styles.primaryButtonText}>Entrar em contato</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      );
+    },
+    [
+      abrirContato,
+      editarCarona,
+      excluirCarona,
+      excluindoId,
+      formatarDatasResumo,
+      meuId,
+      mostrarRota,
+      obterFotoUsuario,
+      pegarNomeUsuario,
+      tipoNormalizado,
+    ]
+  );
 
   const miniMapaHtml = useMemo(() => {
-    if (!viagemSelecionada?.partida || !viagemSelecionada?.destino) return "";
-
-    const nome = pegarNomeUsuario(viagemSelecionada);
-    const tipo = tipoNormalizado(viagemSelecionada);
-    const tag = `${nome} • ${tipo === "motorista" ? "Motorista" : "Passageiro"}`;
+    if (!viagemSelecionada) return "";
 
     return criarHtmlMiniMapa(
-      viagemSelecionada.partida,
-      viagemSelecionada.destino,
-      tag,
-      nome
+      viagemSelecionada.partida || "",
+      viagemSelecionada.destino || "",
+      tipoNormalizado(viagemSelecionada) === "motorista" ? "Motorista" : "Passageiro",
+      pegarNomeUsuario(viagemSelecionada)
     );
   }, [viagemSelecionada, pegarNomeUsuario, tipoNormalizado]);
 
-  const renderAvatar = (viagem: Viagem) => {
-    const foto = pegarFotoUsuario(viagem);
-    const nome = pegarNomeUsuario(viagem);
-    const genero = pegarGeneroUsuario(viagem);
-
-    if (foto) {
-      return <Image source={{ uri: foto }} style={styles.avatarImage} />;
-    }
-
-    if (genero === true) {
-      return (
-        <Image
-          source={require("../../assets/images/profile_man.jpeg")}
-          style={styles.avatarImage}
-        />
-      );
-    }
-
-    if (genero === false) {
-      return (
-        <Image
-          source={require("../../assets/images/profile_woman.jpeg")}
-          style={styles.avatarImage}
-        />
-      );
-    }
-
+  if (loading) {
     return (
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{nome.charAt(0).toUpperCase()}</Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#0B1B35" />
+        <Text style={styles.loadingText}>Carregando caronas disponíveis...</Text>
       </View>
     );
-  };
-
-  const renderHeader = () => {
-    const nomeSelecionado = viagemSelecionada
-      ? pegarNomeUsuario(viagemSelecionada)
-      : "";
-
-    const tipoSelecionado = viagemSelecionada
-      ? tipoNormalizado(viagemSelecionada)
-      : null;
-
-    const diasSelecionados = viagemSelecionada
-      ? formatarDatasResumo(viagemSelecionada)
-      : "";
+  }
 
     return (
-      <View>
-        <Text style={styles.title}>Caronas Disponíveis</Text>
-        <Text style={styles.subtitle}>
-          Encontre motoristas e passageiros cadastrados na plataforma.
-        </Text>
-
-        <View style={styles.previewCard}>
-          <Text style={styles.previewTitle}>Mini-mapa / Prévia da rota</Text>
-
-          {viagemSelecionada ? (
-            <>
-              <View style={styles.previewBadgeRow}>
-                <View style={styles.previewBadge}>
-                  <Text style={styles.previewBadgeText}>
-                    Cadastrado por {nomeSelecionado}
-                  </Text>
-                </View>
-
-                <View style={styles.previewTypeBadge}>
-                  <Text style={styles.previewTypeBadgeText}>
-                    {tipoSelecionado === "motorista" ? "Motorista" : "Passageiro"}
-                  </Text>
-                </View>
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      <FlatList
+        ref={flatListRef}
+        data={viagensFiltradas}
+        keyExtractor={(item, index) =>
+          String(item.idViagem ?? item.id ?? `trip-${index}`)
+        }
+        renderItem={renderItem}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        ListHeaderComponent={
+          <View>
+            {viagemSelecionada ? (
+              <View style={styles.mapCard}>
+                <WebView
+                  originWhitelist={["*"]}
+                  source={{ html: miniMapaHtml }}
+                  style={styles.map}
+                  javaScriptEnabled
+                  domStorageEnabled
+                  scrollEnabled={false}
+                  bounces={false}
+                />
               </View>
+            ) : null}
 
-              <Text style={styles.previewName}>{nomeSelecionado}</Text>
+            <View style={styles.selectedStateCard}>
+              {viagemSelecionada ? (
+                <>
+                  <Text style={styles.selectedStateTitle}>Rota selecionada</Text>
 
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>Partida:</Text>{" "}
-                {viagemSelecionada.partida}
-              </Text>
+                  <Text style={styles.selectedStateName}>
+                    {pegarNomeUsuario(viagemSelecionada)} •{" "}
+                    {tipoNormalizado(viagemSelecionada) === "motorista"
+                      ? "Motorista"
+                      : "Passageiro"}
+                  </Text>
 
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>Destino:</Text>{" "}
-                {viagemSelecionada.destino}
-              </Text>
+                  <Text style={styles.selectedInfo}>
+                    <Text style={styles.selectedInfoLabel}>Partida:</Text>{" "}
+                    {viagemSelecionada.partida}
+                  </Text>
 
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>Entrada:</Text>{" "}
-                {viagemSelecionada.horarioEntrada || "-"}
-              </Text>
+                  <Text style={styles.selectedInfo}>
+                    <Text style={styles.selectedInfoLabel}>Destino:</Text>{" "}
+                    {viagemSelecionada.destino}
+                  </Text>
 
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>Saída:</Text>{" "}
-                {viagemSelecionada.horarioSaida || "-"}
-              </Text>
+                  <Text style={styles.selectedInfo}>
+                    <Text style={styles.selectedInfoLabel}>Entrada:</Text>{" "}
+                    {viagemSelecionada.horarioEntrada || "-"}
+                  </Text>
 
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>Ajuda mensal:</Text> R${" "}
-                {viagemSelecionada.ajudaDeCusto ?? "0"}
-              </Text>
+                  <Text style={styles.selectedInfo}>
+                    <Text style={styles.selectedInfoLabel}>Saída:</Text>{" "}
+                    {viagemSelecionada.horarioSaida || "-"}
+                  </Text>
 
-              {!!diasSelecionados && (
-                <Text style={styles.previewText}>
-                  <Text style={styles.previewLabel}>Dias:</Text> {diasSelecionados}
-                </Text>
+                  <Text style={styles.selectedInfo}>
+                    <Text style={styles.selectedInfoLabel}>Ajuda mensal:</Text>{" "}
+                    R$ {viagemSelecionada.ajudaDeCusto ?? "0"}
+                  </Text>
+
+                  {!!formatarDatasResumo(viagemSelecionada) && (
+                    <Text style={styles.selectedInfo}>
+                      <Text style={styles.selectedInfoLabel}>Dias:</Text>{" "}
+                      {formatarDatasResumo(viagemSelecionada)}
+                    </Text>
+                  )}
+
+                  <View style={styles.selectedActionsRow}>
+                    {meuId !== null &&
+                    Number(viagemSelecionada.idUsuario) === Number(meuId) ? (
+                      <>
+                        <TouchableOpacity
+                          style={styles.selectedEditButton}
+                          onPress={() => editarCarona(viagemSelecionada)}
+                        >
+                          <Text style={styles.selectedEditButtonText}>
+                            Editar carona
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.selectedDeleteButton}
+                          onPress={() => excluirCarona(viagemSelecionada)}
+                        >
+                          <Text style={styles.selectedDeleteButtonText}>
+                            Excluir
+                          </Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.selectedContactButton}
+                        onPress={() => abrirContato(viagemSelecionada)}
+                      >
+                        <Text style={styles.selectedContactButtonText}>
+                          Entrar em contato
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    <TouchableOpacity
+                      style={styles.clearSelectionButton}
+                      onPress={limparSelecao}
+                    >
+                      <Text style={styles.clearSelectionButtonText}>
+                        Limpar seleção
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.selectedStateTitle}>
+                    Nenhuma rota selecionada
+                  </Text>
+                  <Text style={styles.selectedStateText}>
+                    Toque em “Ver rota” para abrir a prévia da carona acima.
+                  </Text>
+                </>
               )}
+            </View>
 
-              <View style={styles.miniMapBox}>
-                <View style={styles.webViewWrapper}>
-                  <WebView
-                    key={`${viagemSelecionada.idViagem ?? viagemSelecionada.id ?? "rota"}-${viagemSelecionada.partida ?? ""}-${viagemSelecionada.destino ?? ""}`}
-                    originWhitelist={["*"]}
-                    source={{ html: miniMapaHtml }}
-                    style={styles.webView}
-                    javaScriptEnabled
-                    domStorageEnabled
-                    scrollEnabled={false}
-                    showsVerticalScrollIndicator={false}
-                    showsHorizontalScrollIndicator={false}
-                    startInLoadingState={false}
-                  />
-                </View>
+            <View style={styles.filtersCard}>
+              <Text style={styles.filtersTitle}>Filtros</Text>
 
-                <Text style={styles.miniMapSubtext}>
-                  {viagemSelecionada.partida} → {viagemSelecionada.destino}
-                </Text>
-              </View>
-
-              <View style={styles.previewActionsRow}>
+              <View style={styles.filterRow}>
                 <TouchableOpacity
-                  style={styles.previewPrimaryButton}
-                  onPress={() => abrirContato(viagemSelecionada)}
+                  style={[
+                    styles.filterChip,
+                    filtroTipo === "todos" && styles.filterChipActive,
+                  ]}
+                  onPress={() => setFiltroTipo("todos")}
                 >
-                  <Text style={styles.previewPrimaryButtonText}>
-                    Entrar em contato
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      filtroTipo === "todos" && styles.filterChipTextActive,
+                    ]}
+                  >
+                    Todos
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.filterChip,
+                    filtroTipo === "motorista" && styles.filterChipActive,
+                  ]}
+                  onPress={() => setFiltroTipo("motorista")}
+                >
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      filtroTipo === "motorista" && styles.filterChipTextActive,
+                    ]}
+                  >
+                    Motorista
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.filterChip,
+                    filtroTipo === "passageiro" && styles.filterChipActive,
+                  ]}
+                  onPress={() => setFiltroTipo("passageiro")}
+                >
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      filtroTipo === "passageiro" && styles.filterChipTextActive,
+                    ]}
+                  >
+                    Passageiro
                   </Text>
                 </TouchableOpacity>
               </View>
 
               <TouchableOpacity
-                style={styles.clearPreviewButton}
-                onPress={limparPreviaRota}
+                style={[
+                  styles.nearbyButton,
+                  somenteProximas && styles.nearbyButtonActive,
+                ]}
+                onPress={() => {
+                  if (!minhaCidade) {
+                    Alert.alert(
+                      "Aviso",
+                      "Seu cadastro ainda não possui cidade definida para aplicar este filtro."
+                    );
+                    return;
+                  }
+
+                  setSomenteProximas((prev) => !prev);
+                }}
               >
-                <Text style={styles.clearPreviewButtonText}>Limpar prévia</Text>
+                <Text
+                  style={[
+                    styles.nearbyButtonText,
+                    somenteProximas && styles.nearbyButtonTextActive,
+                  ]}
+                >
+                  {somenteProximas
+                    ? `Próximas de mim (${usuarioLogado?.cidade || ""})`
+                    : "Mostrar caronas próximas de mim"}
+                </Text>
               </TouchableOpacity>
-            </>
-          ) : (
-            <View style={styles.miniMapBox}>
-              <Text style={styles.miniMapTitle}>Nenhuma rota selecionada</Text>
-              <Text style={styles.miniMapHint}>
-                Toque em “Ver rota” em algum card para visualizar a prévia aqui
-                no topo.
-              </Text>
             </View>
-          )}
-        </View>
-
-        <View style={styles.filtersCard}>
-          <Text style={styles.filtersTitle}>Filtros</Text>
-
-          <View style={styles.filterChipsRow}>
-            <TouchableOpacity
-              style={[
-                styles.filterChip,
-                filtroTipo === "todos" && styles.filterChipActive,
-              ]}
-              onPress={() => setFiltroTipo("todos")}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  filtroTipo === "todos" && styles.filterChipTextActive,
-                ]}
-              >
-                Todos
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.filterChip,
-                filtroTipo === "motorista" && styles.filterChipActive,
-              ]}
-              onPress={() => setFiltroTipo("motorista")}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  filtroTipo === "motorista" && styles.filterChipTextActive,
-                ]}
-              >
-                Motorista
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.filterChip,
-                filtroTipo === "passageiro" && styles.filterChipActive,
-              ]}
-              onPress={() => setFiltroTipo("passageiro")}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  filtroTipo === "passageiro" && styles.filterChipTextActive,
-                ]}
-              >
-                Passageiro
-              </Text>
-            </TouchableOpacity>
           </View>
-
-          <TouchableOpacity
-            style={[
-              styles.nearbyButton,
-              somenteProximas && styles.nearbyButtonActive,
-            ]}
-            onPress={() => {
-              if (!minhaCidade) {
-                Alert.alert(
-                  "Aviso",
-                  "Seu cadastro ainda não possui cidade definida para aplicar este filtro."
-                );
-                return;
-              }
-              setSomenteProximas((prev) => !prev);
-            }}
-          >
-            <Text
-              style={[
-                styles.nearbyButtonText,
-                somenteProximas && styles.nearbyButtonTextActive,
-              ]}
-            >
-              {somenteProximas
-                ? `Próximas de mim (${usuarioLogado?.cidade || ""})`
-                : "Mostrar caronas próximas de mim"}
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyTitle}>Nenhuma carona encontrada</Text>
+            <Text style={styles.emptyText}>
+              Tente mudar os filtros para visualizar outras opções.
             </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.safe} edges={["top"]}>
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#0B1B35" />
-          <Text style={styles.loadingText}>Carregando caronas...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <View style={styles.container}>
-        <FlatList
-          ref={flatListRef}
-          data={caronasDisponiveis}
-          keyExtractor={(item, index) =>
-            String(item.idViagem ?? item.id ?? index)
-          }
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          ListHeaderComponent={renderHeader}
-          ListEmptyComponent={
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyText}>
-                Nenhuma carona disponível no momento.
-              </Text>
-            </View>
-          }
-          renderItem={({ item }) => {
-            const nome = pegarNomeUsuario(item);
-            const tipo = tipoNormalizado(item);
-            const datasResumo = formatarDatasResumo(item);
-
-            return (
-              <View style={styles.card}>
-                {renderAvatar(item)}
-
-                <View style={styles.cardContent}>
-                  <Text style={styles.name}>{nome}</Text>
-                  <Text style={styles.role}>
-                    {tipo === "motorista" ? "Motorista" : "Passageiro"}
-                  </Text>
-
-                  <Text style={styles.info}>
-                    <Text style={styles.label}>Partida:</Text> {item.partida}
-                  </Text>
-
-                  <Text style={styles.info}>
-                    <Text style={styles.label}>Destino:</Text> {item.destino}
-                  </Text>
-
-                  <Text style={styles.info}>
-                    <Text style={styles.label}>Entrada:</Text>{" "}
-                    {item.horarioEntrada || "-"}
-                  </Text>
-
-                  <Text style={styles.info}>
-                    <Text style={styles.label}>Saída:</Text>{" "}
-                    {item.horarioSaida || "-"}
-                  </Text>
-
-                  <Text style={styles.info}>
-                    <Text style={styles.label}>Ajuda mensal:</Text> R${" "}
-                    {item.ajudaDeCusto ?? "0"}
-                  </Text>
-
-                  {!!datasResumo && (
-                    <Text style={styles.info}>
-                      <Text style={styles.label}>Dias:</Text> {datasResumo}
-                    </Text>
-                  )}
-
-                  <View style={styles.actionsRow}>
-                    <TouchableOpacity
-                      style={styles.secondaryButton}
-                      onPress={() => verRotaNoMiniMapa(item)}
-                    >
-                      <Text style={styles.secondaryButtonText}>Ver rota</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.primaryButton}
-                      onPress={() => abrirContato(item)}
-                    >
-                      <Text style={styles.primaryButtonText}>
-                        Entrar em contato
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            );
-          }}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-        />
-      </View>
+          </View>
+        }
+        contentContainerStyle={styles.content}
+      />
     </SafeAreaView>
   );
 }
@@ -1275,19 +1356,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#F4F7FB",
   },
 
-  container: {
-    flex: 1,
-    backgroundColor: "#F4F7FB",
+  content: {
     paddingHorizontal: 16,
+    paddingBottom: 28,
     paddingTop: 8,
   },
 
-  listContent: {
-    paddingBottom: 28,
-  },
-
-  center: {
+  loadingContainer: {
     flex: 1,
+    backgroundColor: "#F4F7FB",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 24,
@@ -1297,23 +1374,24 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     color: "#4B5563",
+    textAlign: "center",
   },
 
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#0B1B35",
-    marginBottom: 6,
+  mapCard: {
+    overflow: "hidden",
+    borderRadius: 22,
+    backgroundColor: "#EAF2FF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    marginBottom: 14,
   },
 
-  subtitle: {
-    fontSize: 14,
-    color: "#5B6470",
-    marginBottom: 18,
-    lineHeight: 20,
+  map: {
+    height: 240,
+    backgroundColor: "#EAF2FF",
   },
 
-  previewCard: {
+  selectedStateCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 18,
     padding: 16,
@@ -1322,140 +1400,109 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
 
-  previewTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#0B1B35",
-    marginBottom: 10,
-  },
-
-  previewBadgeRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 8,
-  },
-
-  previewBadge: {
-    backgroundColor: "#0B1B35",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-
-  previewBadgeText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-
-  previewTypeBadge: {
-    backgroundColor: "#EAF2FF",
-    borderWidth: 1,
-    borderColor: "#C7D7FE",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-
-  previewTypeBadgeText: {
-    color: "#2C5EFF",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-
-  previewName: {
+  selectedStateTitle: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#111827",
-    marginBottom: 8,
-  },
-
-  previewText: {
-    fontSize: 14,
-    color: "#1F2937",
-    marginBottom: 5,
-    lineHeight: 20,
-  },
-
-  previewLabel: {
-    fontWeight: "700",
-    color: "#111827",
-  },
-
-  miniMapBox: {
-    marginTop: 12,
-    backgroundColor: "#EAF2FF",
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#C7D7FE",
-  },
-
-  miniMapTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#0B1B35",
+    color: "#0F172A",
     marginBottom: 6,
   },
 
-  miniMapSubtext: {
-    fontSize: 13,
-    color: "#4B5563",
-    marginTop: 10,
-    lineHeight: 18,
-  },
-
-  miniMapHint: {
-    fontSize: 13,
+  selectedStateText: {
+    fontSize: 14,
     color: "#64748B",
-    lineHeight: 19,
+    lineHeight: 20,
   },
 
-  webViewWrapper: {
-    width: "100%",
-    height: 190,
-    borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: "#DCE9FF",
+  selectedStateName: {
+    fontSize: 14,
+    color: "#64748B",
+    marginBottom: 10,
+    lineHeight: 20,
   },
 
-  webView: {
-    flex: 1,
-    backgroundColor: "transparent",
+  selectedInfo: {
+    fontSize: 14,
+    color: "#374151",
+    lineHeight: 22,
+    marginBottom: 2,
   },
 
-  previewActionsRow: {
-    marginTop: 12,
+  selectedInfoLabel: {
+    fontWeight: "700",
+    color: "#111827",
   },
 
-  previewPrimaryButton: {
-    width: "100%",
+  selectedActionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 14,
+  },
+
+  selectedContactButton: {
     borderRadius: 12,
     backgroundColor: "#06264D",
-    paddingVertical: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
     alignItems: "center",
     justifyContent: "center",
+    minWidth: 138,
   },
 
-  previewPrimaryButtonText: {
+  selectedContactButtonText: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
   },
 
-  clearPreviewButton: {
-    marginTop: 12,
-    backgroundColor: "#D9DEE7",
+  selectedEditButton: {
     borderRadius: 12,
-    paddingVertical: 13,
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FDBA74",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
     alignItems: "center",
     justifyContent: "center",
+    minWidth: 118,
   },
 
-  clearPreviewButtonText: {
-    color: "#1F2937",
-    fontSize: 15,
+  selectedEditButtonText: {
+    color: "#C2410C",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
+  selectedDeleteButton: {
+    borderRadius: 12,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 88,
+  },
+
+  selectedDeleteButtonText: {
+    color: "#B91C1C",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
+  clearSelectionButton: {
+    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    backgroundColor: "#EEF4FF",
+    borderWidth: 1,
+    borderColor: "#C7D7FE",
+  },
+
+  clearSelectionButtonText: {
+    color: "#2C5EFF",
+    fontSize: 13,
     fontWeight: "700",
   },
 
@@ -1471,11 +1518,11 @@ const styles = StyleSheet.create({
   filtersTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#0B1B35",
-    marginBottom: 12,
+    color: "#0F172A",
+    marginBottom: 14,
   },
 
-  filterChipsRow: {
+  filterRow: {
     flexDirection: "row",
     gap: 8,
     marginBottom: 12,
@@ -1535,117 +1582,156 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    padding: 14,
-    marginBottom: 12,
+  },
+
+  cardTop: {
     flexDirection: "row",
-    gap: 12,
+    alignItems: "flex-start",
   },
 
   avatar: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#0B1B35",
-    alignItems: "center",
-    justifyContent: "center",
+    marginRight: 12,
+    backgroundColor: "#E2E8F0",
   },
 
-  avatarText: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontWeight: "700",
-  },
-
-  avatarImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#E5E7EB",
-  },
-
-  cardContent: {
+  cardInfo: {
     flex: 1,
   },
 
-  name: {
+  nome: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#0B1B35",
+    color: "#0F172A",
     marginBottom: 2,
   },
 
-  role: {
-    fontSize: 13,
-    color: "#6B7280",
-    marginBottom: 10,
-    fontWeight: "600",
+  tipo: {
+    fontSize: 14,
+    color: "#64748B",
+    marginBottom: 8,
   },
 
   info: {
     fontSize: 14,
-    color: "#1F2937",
-    marginBottom: 5,
-    lineHeight: 20,
+    color: "#374151",
+    lineHeight: 22,
   },
 
-  label: {
+  infoLabel: {
     fontWeight: "700",
     color: "#111827",
   },
 
   actionsRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
-    marginTop: 12,
-  },
-
-  secondaryButton: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#C7D7FE",
-    backgroundColor: "#EEF4FF",
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  secondaryButtonText: {
-    color: "#2C5EFF",
-    fontSize: 14,
-    fontWeight: "700",
+    marginTop: 14,
   },
 
   primaryButton: {
-    flex: 1.2,
     borderRadius: 12,
     backgroundColor: "#06264D",
-    paddingVertical: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
     alignItems: "center",
     justifyContent: "center",
+    minWidth: 135,
   },
 
   primaryButtonText: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
+  },
+
+  secondaryButton: {
+    borderRadius: 12,
+    backgroundColor: "#EEF4FF",
+    borderWidth: 1,
+    borderColor: "#C7D7FE",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 92,
+  },
+
+  secondaryButtonText: {
+    color: "#2C5EFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
+  editButton: {
+    borderRadius: 12,
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FDBA74",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 118,
+  },
+
+  editButtonText: {
+    color: "#C2410C",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
+  deleteButton: {
+    borderRadius: 12,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 88,
+  },
+
+  deleteButtonText: {
+    color: "#B91C1C",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
+  buttonDisabled: {
+    opacity: 0.7,
   },
 
   emptyBox: {
     backgroundColor: "#FFFFFF",
     borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    padding: 18,
+    padding: 22,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0F172A",
+    marginBottom: 6,
+    textAlign: "center",
   },
 
   emptyText: {
-    color: "#6B7280",
     fontSize: 14,
+    color: "#64748B",
     textAlign: "center",
+    lineHeight: 20,
   },
 });

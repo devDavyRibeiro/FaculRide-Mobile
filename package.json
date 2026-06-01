@@ -1,7 +1,7 @@
 {
   "name": "faculride-mobile",
   "main": "expo-router/entry",
-  "version": "0.6.0-preview.1",
+  "version": "0.9.0-preview.1",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
@@ -22,6 +22,7 @@
     "expo": "~54.0.33",
     "expo-blur": "~15.0.8",
     "expo-constants": "~18.0.13",
+    "expo-document-picker": "~14.0.8",
     "expo-font": "~14.0.11",
     "expo-haptics": "~15.0.8",
     "expo-image": "~3.0.11",

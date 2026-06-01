@@ -2,7 +2,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Picker } from "@react-native-picker/picker";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Modal,
@@ -15,6 +17,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { API_URL } from "../../src/constants/api";
 
 type DiaCalendario = {
   dia: number;
@@ -22,12 +25,14 @@ type DiaCalendario = {
   desabilitado: boolean;
 };
 
-type ModoVigencia = "mensal" | "semestre";
+type CalendarioMes = {
+  key: string;
+  label: string;
+  dias: DiaCalendario[];
+};
 
-const baseURL =
-  typeof window !== "undefined" && window.location.hostname.includes("localhost")
-    ? "http://localhost:3000/api"
-    : "https://projeto-faculride.onrender.com/api";
+type ModoVigencia = "mensal" | "semestre";
+const TIME_ZONE = "America/Sao_Paulo";
 
 function formatarHora(date: Date) {
   const horas = String(date.getHours()).padStart(2, "0");
@@ -48,7 +53,60 @@ function criarDataComHora(valor?: string) {
   return data;
 }
 
+function parseDatasRotaParam(valor: unknown): string[] {
+  if (!valor) return [];
+
+  if (Array.isArray(valor)) {
+    const primeira = valor[0];
+    if (!primeira) return [];
+    try {
+      const parsed = JSON.parse(primeira);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  if (typeof valor === "string") {
+    try {
+      const parsed = JSON.parse(valor);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function extrairOrigemECidade(partidaCompleta?: string) {
+  const texto = (partidaCompleta || "").trim();
+
+  if (!texto) {
+    return {
+      origem: "",
+      cidade: "",
+    };
+  }
+
+  const partes = texto.split(",").map((p) => p.trim()).filter(Boolean);
+
+  if (partes.length >= 2) {
+    return {
+      origem: partes.slice(0, partes.length - 1).join(", "),
+      cidade: partes[partes.length - 1],
+    };
+  }
+
+  return {
+    origem: texto,
+    cidade: "",
+  };
+}
+
 export default function MapaScreen() {
+  const params = useLocalSearchParams();
+
   const [meuId, setMeuId] = useState<number | null>(null);
 
   const [tipoCarona, setTipoCarona] = useState<"oferecer" | "procurar">(
@@ -57,6 +115,7 @@ export default function MapaScreen() {
   const [modoVigencia, setModoVigencia] = useState<ModoVigencia>("mensal");
 
   const [origem, setOrigem] = useState("");
+  const [cidadePartida, setCidadePartida] = useState("");
   const [destino, setDestino] = useState("FATEC Votorantim");
   const [entradaFatec, setEntradaFatec] = useState("");
   const [saidaFatec, setSaidaFatec] = useState("");
@@ -65,13 +124,76 @@ export default function MapaScreen() {
 
   const [mostrarCalendario, setMostrarCalendario] = useState(false);
   const [datasRota, setDatasRota] = useState<string[]>([]);
-  const [diasCalendario, setDiasCalendario] = useState<DiaCalendario[]>([]);
-  const [mesAtualLabel, setMesAtualLabel] = useState("");
+  const [calendariosMensais, setCalendariosMensais] = useState<CalendarioMes[]>([]);
 
   const [mostrarPickerEntrada, setMostrarPickerEntrada] = useState(false);
   const [mostrarPickerSaida, setMostrarPickerSaida] = useState(false);
   const [horaEntradaTemp, setHoraEntradaTemp] = useState<Date>(new Date());
   const [horaSaidaTemp, setHoraSaidaTemp] = useState<Date>(new Date());
+
+  const [modoEdicaoAtivo, setModoEdicaoAtivo] = useState(false);
+
+  const ultimaSessaoEdicaoAplicadaRef = useRef<string>("");
+
+  const idViagemEdicao = useMemo(() => {
+    const valor = params?.idViagem;
+    if (Array.isArray(valor)) return valor[0] || "";
+    return typeof valor === "string" ? valor : "";
+  }, [params?.idViagem]);
+
+  const editSession = useMemo(() => {
+    const valor = params?.editSession;
+    if (Array.isArray(valor)) return valor[0] || "";
+    return typeof valor === "string" ? valor : "";
+  }, [params?.editSession]);
+
+  const possuiParamsDeEdicao = useMemo(() => {
+    const valor = params?.modo;
+    const modo = Array.isArray(valor) ? valor[0] : valor;
+    return modo === "editar" && !!idViagemEdicao && !!editSession;
+  }, [params?.modo, idViagemEdicao, editSession]);
+
+  const tipoCaronaParam = useMemo(() => {
+    const valor = params?.tipoCarona;
+    if (Array.isArray(valor)) return valor[0] || "";
+    return typeof valor === "string" ? valor : "";
+  }, [params?.tipoCarona]);
+
+  const origemParam = useMemo(() => {
+    const valor = params?.origem;
+    if (Array.isArray(valor)) return valor[0] || "";
+    return typeof valor === "string" ? valor : "";
+  }, [params?.origem]);
+
+  const destinoParam = useMemo(() => {
+    const valor = params?.destino;
+    if (Array.isArray(valor)) return valor[0] || "";
+    return typeof valor === "string" ? valor : "";
+  }, [params?.destino]);
+
+  const entradaParam = useMemo(() => {
+    const valor = params?.entradaFatec;
+    if (Array.isArray(valor)) return valor[0] || "";
+    return typeof valor === "string" ? valor : "";
+  }, [params?.entradaFatec]);
+
+  const saidaParam = useMemo(() => {
+    const valor = params?.saidaFatec;
+    if (Array.isArray(valor)) return valor[0] || "";
+    return typeof valor === "string" ? valor : "";
+  }, [params?.saidaFatec]);
+
+  const ajudaParam = useMemo(() => {
+    const valor = params?.ajudaCusto;
+    if (Array.isArray(valor)) return valor[0] || "";
+    return typeof valor === "string" ? valor : "";
+  }, [params?.ajudaCusto]);
+
+  const datasParam = useMemo(() => {
+    const valor = params?.datasRota;
+    if (Array.isArray(valor)) return valor[0] || "";
+    return typeof valor === "string" ? valor : "";
+  }, [params?.datasRota]);
 
   const toISODate = (d: Date) => {
     const ano = d.getFullYear();
@@ -80,29 +202,24 @@ export default function MapaScreen() {
     return `${ano}-${mes}-${dia}`;
   };
 
-  const gerarCalendarioMesCorrente = useCallback(() => {
+  const nomesMes = [
+    "janeiro",
+    "fevereiro",
+    "março",
+    "abril",
+    "maio",
+    "junho",
+    "julho",
+    "agosto",
+    "setembro",
+    "outubro",
+    "novembro",
+    "dezembro",
+  ];
+
+  const gerarCalendarioDeUmMes = useCallback((ano: number, mes: number) => {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
-
-    const ano = hoje.getFullYear();
-    const mes = hoje.getMonth();
-
-    const nomesMes = [
-      "janeiro",
-      "fevereiro",
-      "março",
-      "abril",
-      "maio",
-      "junho",
-      "julho",
-      "agosto",
-      "setembro",
-      "outubro",
-      "novembro",
-      "dezembro",
-    ];
-
-    setMesAtualLabel(`${nomesMes[mes]} de ${ano}`);
 
     const primeiroDia = new Date(ano, mes, 1);
     const primeiroDiaSemana = primeiroDia.getDay();
@@ -132,8 +249,57 @@ export default function MapaScreen() {
       });
     }
 
-    setDiasCalendario(calendario);
+    return calendario;
   }, []);
+
+  const gerarCalendariosMensais = useCallback(() => {
+    const hoje = new Date();
+    const anoAtual = hoje.getFullYear();
+    const mesAtual = hoje.getMonth();
+
+    const proximoMesDate = new Date(anoAtual, mesAtual + 1, 1);
+    const anoProximoMes = proximoMesDate.getFullYear();
+    const mesProximo = proximoMesDate.getMonth();
+
+    const mesAtualObj: CalendarioMes = {
+      key: `${anoAtual}-${String(mesAtual + 1).padStart(2, "0")}`,
+      label: `${nomesMes[mesAtual]} de ${anoAtual}`,
+      dias: gerarCalendarioDeUmMes(anoAtual, mesAtual),
+    };
+
+    const proximoMesObj: CalendarioMes = {
+      key: `${anoProximoMes}-${String(mesProximo + 1).padStart(2, "0")}`,
+      label: `${nomesMes[mesProximo]} de ${anoProximoMes}`,
+      dias: gerarCalendarioDeUmMes(anoProximoMes, mesProximo),
+    };
+
+    setCalendariosMensais([mesAtualObj, proximoMesObj]);
+  }, [gerarCalendarioDeUmMes]);
+
+  const resetarTelaParaCadastro = useCallback(() => {
+    setModoEdicaoAtivo(false);
+    setTipoCarona("oferecer");
+    setModoVigencia("mensal");
+    setOrigem("");
+    setCidadePartida("");
+    setDestino("FATEC Votorantim");
+    setEntradaFatec("");
+    setSaidaFatec("");
+    setAjudaCusto("");
+    setDatasRota([]);
+    setMostrarCalendario(false);
+    setMostrarPickerEntrada(false);
+    setMostrarPickerSaida(false);
+    setHoraEntradaTemp(new Date());
+    setHoraSaidaTemp(new Date());
+    gerarCalendariosMensais();
+  }, [gerarCalendariosMensais]);
+
+  const cancelarEdicao = useCallback(() => {
+    ultimaSessaoEdicaoAplicadaRef.current = "";
+    resetarTelaParaCadastro();
+    router.replace("/(tabs)/sua-carona");
+  }, [resetarTelaParaCadastro]);
 
   useEffect(() => {
     const carregarUsuario = async () => {
@@ -141,17 +307,14 @@ export default function MapaScreen() {
         const usuarioLogadoStr = await AsyncStorage.getItem("usuarioLogado");
 
         if (!usuarioLogadoStr) {
-          console.log("usuarioLogado não encontrado no AsyncStorage");
           setMeuId(null);
           return;
         }
 
         const usuarioLogado = JSON.parse(usuarioLogadoStr);
-
         const id = usuarioLogado?.idUsuario || usuarioLogado?.id;
 
         if (!id) {
-          console.log("usuarioLogado encontrado, mas sem id:", usuarioLogado);
           setMeuId(null);
           return;
         }
@@ -164,15 +327,63 @@ export default function MapaScreen() {
     };
 
     carregarUsuario();
-    gerarCalendarioMesCorrente();
-  }, [gerarCalendarioMesCorrente]);
+    gerarCalendariosMensais();
+  }, [gerarCalendariosMensais]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (
+        possuiParamsDeEdicao &&
+        editSession &&
+        ultimaSessaoEdicaoAplicadaRef.current !== editSession
+      ) {
+        const { origem: origemExtraida, cidade: cidadeExtraida } =
+          extrairOrigemECidade(origemParam);
+
+        setModoEdicaoAtivo(true);
+
+        if (tipoCaronaParam === "oferecer" || tipoCaronaParam === "procurar") {
+          setTipoCarona(tipoCaronaParam);
+        }
+
+        setOrigem(origemExtraida);
+        setCidadePartida(cidadeExtraida);
+        setDestino(
+          typeof destinoParam === "string" && destinoParam.trim()
+            ? destinoParam
+            : "FATEC Votorantim"
+        );
+        setEntradaFatec(typeof entradaParam === "string" ? entradaParam : "");
+        setSaidaFatec(typeof saidaParam === "string" ? saidaParam : "");
+        setAjudaCusto(typeof ajudaParam === "string" ? ajudaParam : "");
+
+        const datasParseadas = parseDatasRotaParam(datasParam);
+        setDatasRota(datasParseadas);
+        setModoVigencia(datasParseadas.length >= 20 ? "semestre" : "mensal");
+
+        ultimaSessaoEdicaoAplicadaRef.current = editSession;
+      }
+
+      return () => {};
+    }, [
+      possuiParamsDeEdicao,
+      editSession,
+      tipoCaronaParam,
+      origemParam,
+      destinoParam,
+      entradaParam,
+      saidaParam,
+      ajudaParam,
+      datasParam,
+    ])
+  );
 
   const gerarDatasDoSemestreAtual = useCallback(() => {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
     const ano = hoje.getFullYear();
-    const mesAtual = hoje.getMonth(); // 0-11
+    const mesAtual = hoje.getMonth();
 
     const primeiroSemestre = mesAtual <= 5;
 
@@ -191,8 +402,7 @@ export default function MapaScreen() {
     const dataAtual = new Date(inicioSemestre);
 
     while (dataAtual <= fimSemestre) {
-      const diaSemana = dataAtual.getDay(); // 0 domingo, 6 sábado
-
+      const diaSemana = dataAtual.getDay();
       const naoEhDomingo = diaSemana !== 0;
       const naoEhPassado = dataAtual >= hoje;
 
@@ -304,9 +514,21 @@ export default function MapaScreen() {
     setMostrarPickerSaida(false);
   };
 
-  const cadastrarRota = async () => {
+  const montarPartidaCompleta = () => {
+    const origemLimpa = origem.trim();
+    const cidadeLimpa = cidadePartida.trim();
+
+    if (origemLimpa && cidadeLimpa) {
+      return `${origemLimpa}, ${cidadeLimpa}`;
+    }
+
+    return origemLimpa || cidadeLimpa;
+  };
+
+  const salvarOuCadastrarRota = async () => {
     if (
       !origem.trim() ||
+      !cidadePartida.trim() ||
       !destino.trim() ||
       !entradaFatec.trim() ||
       !saidaFatec.trim()
@@ -348,7 +570,7 @@ export default function MapaScreen() {
 
       const dadosViagem = {
         tipoUsuario: tipoCarona === "oferecer" ? "motorista" : "passageiro",
-        partida: origem.trim(),
+        partida: montarPartidaCompleta(),
         destino: destino.trim(),
         horarioEntrada: entradaFatec,
         horarioSaida: saidaFatec,
@@ -357,29 +579,45 @@ export default function MapaScreen() {
         datasAgendadas: datasParaEnviar,
       };
 
-      const res = await fetch(`${baseURL}/viagem`, {
-        method: "POST",
+      const url =
+        modoEdicaoAtivo && idViagemEdicao
+          ? `${API_URL}/viagem/${idViagemEdicao}`
+          : `${API_URL}/viagem`;
+
+      const method = modoEdicaoAtivo && idViagemEdicao ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers,
         body: JSON.stringify(dadosViagem),
       });
 
       if (!res.ok) {
-        throw new Error("Erro ao cadastrar rota");
+        throw new Error(
+          modoEdicaoAtivo ? "Erro ao atualizar rota" : "Erro ao cadastrar rota"
+        );
       }
 
-      Alert.alert("Sucesso", "Rota cadastrada com sucesso!");
+      Alert.alert(
+        "Sucesso",
+        modoEdicaoAtivo
+          ? "Rota atualizada com sucesso!"
+          : "Rota cadastrada com sucesso!"
+      );
 
-      setOrigem("");
-      setDestino("FATEC Votorantim");
-      setEntradaFatec("");
-      setSaidaFatec("");
-      setAjudaCusto("");
-      setDatasRota([]);
-      setMostrarCalendario(false);
-      setModoVigencia("mensal");
+      resetarTelaParaCadastro();
+      router.replace("/(tabs)/sua-carona");
     } catch (error) {
-      console.error("Erro ao cadastrar rota:", error);
-      Alert.alert("Erro", "Não foi possível cadastrar a rota.");
+      console.error(
+        modoEdicaoAtivo ? "Erro ao atualizar rota:" : "Erro ao cadastrar rota:",
+        error
+      );
+      Alert.alert(
+        "Erro",
+        modoEdicaoAtivo
+          ? "Não foi possível atualizar a rota."
+          : "Não foi possível cadastrar a rota."
+      );
     } finally {
       setSalvando(false);
     }
@@ -392,9 +630,13 @@ export default function MapaScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.pageTitle}>Planeje sua Carona</Text>
+        <Text style={styles.pageTitle}>
+          {modoEdicaoAtivo ? "Editar sua Carona" : "Planeje sua Carona"}
+        </Text>
         <Text style={styles.pageSubtitle}>
-          Cadastre uma rota para oferecer ou procurar carona.
+          {modoEdicaoAtivo
+            ? "Atualize os dados da sua rota cadastrada."
+            : "Cadastre uma rota para oferecer ou procurar carona."}
         </Text>
 
         <View style={styles.switchRow}>
@@ -439,18 +681,32 @@ export default function MapaScreen() {
             style={styles.input}
             value={origem}
             onChangeText={setOrigem}
-            placeholder="Digite seu ponto de partida"
+            placeholder="Digite sua rua, avenida ou bairro"
+            placeholderTextColor="#9CA3AF"
+          />
+
+          <Text style={styles.label}>Cidade da partida</Text>
+          <TextInput
+            style={styles.input}
+            value={cidadePartida}
+            onChangeText={setCidadePartida}
+            placeholder="Digite sua cidade"
             placeholderTextColor="#9CA3AF"
           />
 
           <Text style={styles.label}>Destino</Text>
-          <TextInput
-            style={styles.input}
-            value={destino}
-            onChangeText={setDestino}
-            placeholder="Selecione o destino"
-            placeholderTextColor="#9CA3AF"
-          />
+
+          <View style={styles.selectWrapper}>
+            <Picker
+              selectedValue={destino}
+              onValueChange={(value) => setDestino(value)}
+              style={styles.picker}
+              dropdownIconColor="#0F172A"
+            >
+              <Picker.Item label="Selecione o destino" value="" color="#64748B" />
+              <Picker.Item label="FATEC Votorantim" value="FATEC Votorantim" />
+            </Picker>
+          </View>
 
           <Text style={styles.label}>Horário de Entrada na Fatec</Text>
           <TouchableOpacity
@@ -556,44 +812,61 @@ export default function MapaScreen() {
               {mostrarCalendario && (
                 <View style={styles.calendarioPopup}>
                   <View style={styles.calendarioHeader}>
-                    <Text style={styles.calendarioMes}>{mesAtualLabel}</Text>
+                    <Text style={styles.calendarioMesPrincipal}>
+                      Selecione os dias da rota
+                    </Text>
                     <Text style={styles.calendarioLegenda}>
-                      Clique nos dias do mês para selecionar. Domingos e dias
-                      passados ficam desativados.
+                      Domingos e dias passados ficam desativados. Para facilitar
+                      o cadastro no fim do mês, o próximo mês também fica
+                      disponível.
                     </Text>
                   </View>
 
-                  <View style={styles.calendarioGrid}>
-                    {["D", "S", "T", "Q", "Q", "S", "S"].map((dia, index) => (
-                      <Text key={`${dia}-${index}`} style={styles.weekday}>
-                        {dia}
-                      </Text>
-                    ))}
+                  {calendariosMensais.map((mesObj) => (
+                    <View key={mesObj.key} style={styles.mesBloco}>
+                      <Text style={styles.calendarioMes}>{mesObj.label}</Text>
 
-                    {diasCalendario.map((c, index) => (
-                      <TouchableOpacity
-                        key={`${c.dateStr ?? "vazio"}-${index}`}
-                        style={[
-                          styles.diaButton,
-                          !c.dateStr && styles.diaVazio,
-                          isDiaSelecionado(c) && styles.diaSelecionado,
-                          c.desabilitado && styles.diaDesabilitado,
-                        ]}
-                        disabled={c.desabilitado || !c.dateStr}
-                        onPress={() => onClickDia(c)}
-                      >
-                        <Text
-                          style={[
-                            styles.diaTexto,
-                            isDiaSelecionado(c) && styles.diaTextoSelecionado,
-                            c.desabilitado && styles.diaTextoDesabilitado,
-                          ]}
-                        >
-                          {c.dia || ""}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                      <View style={styles.weekHeaderRow}>
+                        {["D", "S", "T", "Q", "Q", "S", "S"].map(
+                          (dia, index) => (
+                            <Text
+                              key={`${mesObj.key}-${dia}-${index}`}
+                              style={styles.weekday}
+                            >
+                              {dia}
+                            </Text>
+                          )
+                        )}
+                      </View>
+
+                      <View style={styles.calendarioGrid}>
+                        {mesObj.dias.map((c, index) => (
+                          <TouchableOpacity
+                            key={`${mesObj.key}-${c.dateStr ?? "vazio"}-${index}`}
+                            style={[
+                              styles.diaButton,
+                              !c.dateStr && styles.diaVazio,
+                              isDiaSelecionado(c) && styles.diaSelecionado,
+                              c.desabilitado && styles.diaDesabilitado,
+                            ]}
+                            disabled={c.desabilitado || !c.dateStr}
+                            onPress={() => onClickDia(c)}
+                          >
+                            <Text
+                              style={[
+                                styles.diaTexto,
+                                isDiaSelecionado(c) &&
+                                  styles.diaTextoSelecionado,
+                                c.desabilitado && styles.diaTextoDesabilitado,
+                              ]}
+                            >
+                              {c.dia || ""}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  ))}
                 </View>
               )}
 
@@ -617,13 +890,29 @@ export default function MapaScreen() {
             </View>
           )}
 
+          {modoEdicaoAtivo && (
+            <TouchableOpacity
+              style={styles.cancelEditButton}
+              onPress={cancelarEdicao}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.cancelEditButtonText}>Cancelar edição</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={[styles.primaryButton, salvando && styles.buttonDisabled]}
-            onPress={cadastrarRota}
+            onPress={salvarOuCadastrarRota}
             disabled={salvando}
           >
             <Text style={styles.primaryButtonText}>
-              {salvando ? "Cadastrando..." : "Cadastrar Rota"}
+              {salvando
+                ? modoEdicaoAtivo
+                  ? "Salvando..."
+                  : "Cadastrando..."
+                : modoEdicaoAtivo
+                  ? "Salvar Alterações"
+                  : "Cadastrar Rota"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -672,7 +961,9 @@ export default function MapaScreen() {
               value={horaEntradaTemp}
               mode="time"
               is24Hour
-              display="spinner"
+              display="default"
+              locale="pt-BR"
+              timeZoneName={TIME_ZONE}
               onChange={onChangeHoraEntrada}
               style={styles.iosPicker}
             />
@@ -703,7 +994,9 @@ export default function MapaScreen() {
               value={horaSaidaTemp}
               mode="time"
               is24Hour
-              display="spinner"
+              display="default"
+              locale="pt-BR"
+              timeZoneName={TIME_ZONE}
               onChange={onChangeHoraSaida}
               style={styles.iosPicker}
             />
@@ -785,6 +1078,17 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     marginTop: 12,
   },
+  selectWrapper: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 14,
+    overflow: "hidden",
+    marginBottom: 12,
+  },
+  picker: {
+    color: "#0F172A",
+  },
   input: {
     backgroundColor: "#F9FAFB",
     borderWidth: 1,
@@ -847,12 +1151,21 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   calendarioHeader: {
-    marginBottom: 10,
+    marginBottom: 8,
+  },
+  calendarioMesPrincipal: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    marginBottom: 6,
+    fontSize: 16,
+  },
+  mesBloco: {
+    marginTop: 12,
   },
   calendarioMes: {
     color: "#FFFFFF",
     fontWeight: "700",
-    marginBottom: 4,
+    marginBottom: 8,
     textTransform: "capitalize",
     fontSize: 15,
   },
@@ -861,26 +1174,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
-  calendarioGrid: {
+  weekHeaderRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
   },
   weekday: {
-    width: "12.8%",
+    width: "14.2857%",
     textAlign: "center",
     color: "#C7D2E0",
     fontWeight: "700",
-    marginBottom: 4,
     fontSize: 12,
+    marginBottom: 6,
+  },
+  calendarioGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
   },
   diaButton: {
-    width: "12.8%",
+    width: "14.2857%",
     aspectRatio: 1,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0C345F",
+    marginBottom: 6,
   },
   diaVazio: {
     backgroundColor: "transparent",
@@ -947,6 +1263,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#1F2937",
     lineHeight: 20,
+  },
+  cancelEditButton: {
+    marginTop: 18,
+    marginBottom: -6,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingVertical: 15,
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#DC2626",
+  },
+  cancelEditButtonText: {
+    color: "#DC2626",
+    fontSize: 15,
+    fontWeight: "700",
   },
   primaryButton: {
     marginTop: 20,

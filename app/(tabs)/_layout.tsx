@@ -1,7 +1,52 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Tabs } from "expo-router";
+import React, { useEffect, useState } from "react";
+import { Text, View } from "react-native";
+import { API_URL } from "../../src/constants/api";
 
 export default function TabsLayout() {
+  const [notificacoesNaoLidas, setNotificacoesNaoLidas] = useState(0);
+
+  async function carregarNotificacoes() {
+    try {
+      const token = await AsyncStorage.getItem("token");
+
+      if (!token) {
+        setNotificacoesNaoLidas(0);
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/notifications`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+
+      const naoLidas = Array.isArray(data)
+        ? data.filter((n) => !n.isRead).length
+        : 0;
+
+      setNotificacoesNaoLidas(naoLidas);
+    } catch {
+      setNotificacoesNaoLidas(0);
+    }
+  }
+
+  useEffect(() => {
+    carregarNotificacoes();
+
+    const interval = setInterval(() => {
+      carregarNotificacoes();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <Tabs
       screenOptions={{
@@ -56,11 +101,40 @@ export default function TabsLayout() {
         options={{
           title: "Contato",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons
-              name="chatbubble-ellipses-outline"
-              size={size}
-              color={color}
-            />
+            <View>
+              <Ionicons
+                name="chatbubble-ellipses-outline"
+                size={size}
+                color={color}
+              />
+
+              {notificacoesNaoLidas > 0 && (
+                <View
+                  style={{
+                    position: "absolute",
+                    top: -6,
+                    right: -10,
+                    minWidth: 18,
+                    height: 18,
+                    borderRadius: 9,
+                    backgroundColor: "#DC2626",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingHorizontal: 4,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontSize: 10,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {notificacoesNaoLidas > 9 ? "9+" : notificacoesNaoLidas}
+                  </Text>
+                </View>
+              )}
+            </View>
           ),
         }}
       />

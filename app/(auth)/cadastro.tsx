@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
+import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
@@ -8,15 +9,17 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { API_URL } from '../../src/constants/api';
 
 type TipoUsuario = 'passageiro' | 'motorista';
 
@@ -27,8 +30,6 @@ type ErrosType = {
 type TouchedType = {
   [key: string]: boolean;
 };
-
-const API_BASE_URL = 'https://projeto-faculride.onrender.com';
 
 export default function CadastroScreen() {
   const [tipoUsuario, setTipoUsuario] = useState<TipoUsuario>('passageiro');
@@ -62,6 +63,9 @@ export default function CadastroScreen() {
   const [fotoBase64, setFotoBase64] = useState<string | null>(null);
   const [fotoMimeType, setFotoMimeType] = useState<string | null>(null);
   const [fotoFileName, setFotoFileName] = useState<string | null>(null);
+  const [cnhArquivoUri, setCnhArquivoUri] = useState<string | null>(null);
+  const [cnhArquivoMimeType, setCnhArquivoMimeType] = useState<string | null>(null);
+  const [cnhArquivoFileName, setCnhArquivoFileName] = useState<string | null>(null);
 
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [carregando, setCarregando] = useState(false);
@@ -302,6 +306,12 @@ export default function CadastroScreen() {
         }
         return '';
 
+      case 'arquivoCnh':
+        if (tipoUsuario === 'motorista' && !cnhArquivoUri) {
+          return 'Selecione a foto ou PDF da CNH.';
+        }
+        return '';
+
       default:
         return '';
     }
@@ -334,6 +344,7 @@ export default function CadastroScreen() {
       anoCarro: true,
       corCarro: true,
       placa: true,
+      arquivoCnh: true,
     });
   }
 
@@ -396,6 +407,48 @@ export default function CadastroScreen() {
     setFotoFileName(asset.fileName || `foto-perfil.${asset.mimeType?.split('/')[1] || 'jpg'}`);
   }
 
+  async function escolherArquivoCnh() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'image/jpeg',
+          'image/png',
+          'image/webp',
+          'application/pdf',
+        ],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled) return;
+
+      const arquivo = result.assets?.[0];
+
+      if (!arquivo?.uri) return;
+
+      if ((arquivo.size || 0) > 5 * 1024 * 1024) {
+        Alert.alert(
+          'Arquivo muito grande',
+          'A CNH deve possuir no máximo 5MB.'
+        );
+        return;
+      }
+
+      setCnhArquivoUri(arquivo.uri);
+      setCnhArquivoMimeType(
+        arquivo.mimeType || 'application/pdf'
+      );
+      setCnhArquivoFileName(
+        arquivo.name || 'cnh'
+      );
+
+      marcarComoTocado('arquivoCnh');
+      setErroCampo('arquivoCnh');
+    } catch (error) {
+      console.log('ERRO CNH:', error);
+    }
+  }
+
   function validarFormulario() {
     const novosErros: ErrosType = {};
 
@@ -429,6 +482,7 @@ export default function CadastroScreen() {
         anoCarro,
         corCarro,
         placa,
+        arquivoCnh: cnhArquivoUri || '',
       };
 
       Object.entries(camposMotorista).forEach(([campo, valor]) => {
@@ -442,53 +496,121 @@ export default function CadastroScreen() {
   }
 
   async function uploadFoto(token: string) {
-    if (!fotoUri) return null;
+  if (!fotoUri) return null;
+
+  try {
+    const formData = new FormData();
+
+    formData.append('file', {
+      uri: fotoUri,
+      name: fotoFileName || 'foto-perfil.jpg',
+      type: fotoMimeType || 'image/jpeg',
+    } as any);
+
+    const response = await fetch(`${API_URL}/usuario/foto/upload`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    const responseText = await response.text();
+
+    let data: any = {};
 
     try {
-      const formData = new FormData();
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      data = { raw: responseText };
+    }
 
-      formData.append('file', {
-        uri: fotoUri,
-        name: fotoFileName || 'foto-perfil.jpg',
-        type: fotoMimeType || 'image/jpeg',
-      } as any);
+    if (!response.ok) {
+      throw new Error(
+        data?.message ||
+        data?.erro ||
+        data?.error ||
+        data?.raw ||
+        'Não foi possível enviar a foto.'
+      );
+    }
 
-      const response = await fetch(`${API_BASE_URL}/api/usuario/foto/upload`, {
-        method: 'POST',
+    return data;
+  } catch (error) {
+    console.log('ERRO UPLOAD FOTO:', error);
+    return null;
+  }
+}
+
+async function uploadCnh(token: string) {
+  if (!cnhArquivoUri) return null;
+
+  try {
+    const formData = new FormData();
+
+    formData.append('file', {
+      uri: cnhArquivoUri,
+      name: cnhArquivoFileName || 'cnh.pdf',
+      type: cnhArquivoMimeType || 'application/pdf',
+    } as any);
+
+    const response = await fetch(`${API_URL}/usuario/cnh/upload`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    const responseText = await response.text();
+
+    let data: any = {};
+
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      data = { raw: responseText };
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        data?.message ||
+        data?.erro ||
+        data?.error ||
+        data?.raw ||
+        'Erro ao enviar CNH.'
+      );
+    }
+
+    return data;
+  } catch (error) {
+    console.log('ERRO UPLOAD CNH:', error);
+    return null;
+  }
+}
+
+async function validarCnh(
+  token: string,
+  idUsuario: number | string
+) {
+  try {
+    await fetch(
+      `${API_URL}/usuario/cnh/validar/${idUsuario}`,
+      {
+        method: 'PATCH',
         headers: {
           Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-        body: formData,
-      });
-
-      const responseText = await response.text();
-
-      let data: any = {};
-      try {
-        data = responseText ? JSON.parse(responseText) : {};
-      } catch {
-        data = { raw: responseText };
       }
-
-      if (!response.ok) {
-        throw new Error(
-          data?.message ||
-            data?.erro ||
-            data?.error ||
-            data?.raw ||
-            'Não foi possível enviar a foto.'
-        );
-      }
-
-      return data;
-    } catch (error) {
-      console.log('ERRO UPLOAD FOTO:', error);
-      return null;
-    }
+    );
+  } catch (error) {
+    console.log('ERRO VALIDAR CNH:', error);
   }
+}
 
   async function fazerLoginAutomatico() {
-    const response = await fetch(`${API_BASE_URL}/api/usuario/login`, {
+    const response = await fetch(`${API_URL}/usuario/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -572,7 +694,7 @@ export default function CadastroScreen() {
 
       console.log('PAYLOAD CADASTRO ENVIADO:', payload);
 
-      const response = await fetch(`${API_BASE_URL}/api/usuario`, {
+      const response = await fetch(`${API_URL}/usuario`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -607,15 +729,58 @@ export default function CadastroScreen() {
 
       let usuarioFinal = usuario;
 
-      if (token && fotoUri) {
+if (
+  token &&
+  tipoUsuario === 'motorista' &&
+  cnhArquivoUri
+) {
+  const retornoCnh = await uploadCnh(token);
+
+  if (retornoCnh) {
+    usuarioFinal = {
+      ...usuarioFinal,
+      cnhFotoUrl:
+        retornoCnh?.cnhFotoUrl ??
+        usuarioFinal?.cnhFotoUrl ??
+        null,
+      cnhFotoPath:
+        retornoCnh?.cnhFotoPath ??
+        usuarioFinal?.cnhFotoPath ??
+        null,
+    };
+
+    const idUsuarioValidacao =
+      usuarioFinal?.idUsuario ||
+      usuarioFinal?.id;
+
+    if (idUsuarioValidacao) {
+      await validarCnh(
+        token,
+        idUsuarioValidacao
+      );
+    }
+
+    await AsyncStorage.setItem(
+      'usuario',
+      JSON.stringify(usuarioFinal)
+    );
+
+    await AsyncStorage.setItem(
+      'usuarioLogado',
+      JSON.stringify(usuarioFinal)
+    );
+  }
+}
+
+if (token && fotoUri) {
         const retornoFoto = await uploadFoto(token);
 
         if (retornoFoto) {
           usuarioFinal = {
-            ...usuario,
-            fotoUrl: retornoFoto?.fotoUrl ?? usuario?.fotoUrl ?? null,
-            fotoPath: retornoFoto?.fotoPath ?? usuario?.fotoPath ?? null,
-            foto: retornoFoto?.fotoUrl ?? usuario?.foto ?? null,
+            ...usuarioFinal,
+            fotoUrl: retornoFoto?.fotoUrl ?? usuarioFinal?.fotoUrl ?? null,
+            fotoPath: retornoFoto?.fotoPath ?? usuarioFinal?.fotoPath ?? null,
+            foto: retornoFoto?.fotoUrl ?? usuarioFinal?.foto ?? null,
           };
 
           await AsyncStorage.setItem('usuario', JSON.stringify(usuarioFinal));
@@ -685,453 +850,495 @@ export default function CadastroScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top','bottom']} >
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backButtonText}>← Voltar</Text>
-        </TouchableOpacity>
-
-        <View style={styles.logoBox}>
-          <Image
-            source={require('../../assets/images/logo-faculride-white.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </View>
-
-        <Text style={styles.title}>Criar conta</Text>
-        <Text style={styles.subtitle}>
-          Preencha os dados abaixo para entrar no FaculRide.
-        </Text>
-
-        <View style={styles.formCard}>
-          <Text style={styles.sectionTitle}>Tipo de usuário</Text>
-
-          <View style={styles.segmentedRow}>
-            <TouchableOpacity
-              style={[
-                styles.segmentButton,
-                tipoUsuario === 'passageiro' && styles.segmentButtonActive,
-              ]}
-              onPress={() => aoTrocarTipoUsuario('passageiro')}
-            >
-              <Text
-                style={[
-                  styles.segmentButtonText,
-                  tipoUsuario === 'passageiro' && styles.segmentButtonTextActive,
-                ]}
-              >
-                Passageiro
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.segmentButton,
-                tipoUsuario === 'motorista' && styles.segmentButtonActive,
-              ]}
-              onPress={() => aoTrocarTipoUsuario('motorista')}
-            >
-              <Text
-                style={[
-                  styles.segmentButtonText,
-                  tipoUsuario === 'motorista' && styles.segmentButtonTextActive,
-                ]}
-              >
-                Motorista
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.label}>Foto de perfil (opcional)</Text>
-          <TouchableOpacity style={styles.photoButton} onPress={escolherFoto}>
-            <Text style={styles.photoButtonText}>
-              {fotoUri ? 'Trocar foto' : 'Selecionar foto'}
-            </Text>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={styles.container}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Text style={styles.backButtonText}>← Voltar</Text>
           </TouchableOpacity>
 
-          {fotoUri ? <Image source={{ uri: fotoUri }} style={styles.photoPreview} /> : null}
-
-          <Text style={styles.label}>Nome completo</Text>
-          <TextInput
-            style={[styles.input, erros.nome && styles.inputError]}
-            value={nome}
-            onChangeText={(text) => {
-              setNome(text);
-              marcarComoTocado('nome');
-              validarCampoTempoReal('nome', text);
-            }}
-            placeholder="Digite seu nome completo"
-            placeholderTextColor="#94A3B8"
-          />
-          {renderErro('nome')}
-
-          <Text style={styles.label}>CPF</Text>
-          <TextInput
-            style={[styles.input, erros.cpf && styles.inputError]}
-            value={cpf}
-            onChangeText={(text) => {
-              const valorFormatado = formatarCPF(text);
-              setCpf(valorFormatado);
-              marcarComoTocado('cpf');
-              validarCampoTempoReal('cpf', valorFormatado);
-            }}
-            placeholder="000.000.000-00"
-            placeholderTextColor="#94A3B8"
-            keyboardType="number-pad"
-          />
-          {renderErro('cpf')}
-
-          <Text style={styles.label}>E-mail</Text>
-          <TextInput
-            style={[styles.input, erros.email && styles.inputError]}
-            value={email}
-            onChangeText={(text) => {
-              setEmail(text);
-              marcarComoTocado('email');
-              validarCampoTempoReal('email', text);
-            }}
-            placeholder="Digite seu e-mail"
-            placeholderTextColor="#94A3B8"
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-          {renderErro('email')}
-
-          <Text style={styles.label}>Telefone</Text>
-          <TextInput
-            style={[styles.input, erros.telefone && styles.inputError]}
-            value={telefone}
-            onChangeText={(text) => {
-              const valorFormatado = formatarTelefone(text);
-              setTelefone(valorFormatado);
-              marcarComoTocado('telefone');
-              validarCampoTempoReal('telefone', valorFormatado);
-            }}
-            placeholder="(15) 99999-9999"
-            placeholderTextColor="#94A3B8"
-            keyboardType="phone-pad"
-          />
-          {renderErro('telefone')}
-
-          <Text style={styles.label}>CEP</Text>
-          <TextInput
-            style={[styles.input, erros.cep && styles.inputError]}
-            value={cep}
-            onChangeText={(text) => {
-              const valorFormatado = formatarCEP(text);
-              setCep(valorFormatado);
-              marcarComoTocado('cep');
-              validarCampoTempoReal('cep', valorFormatado);
-
-              const cepLimpo = limparNumero(valorFormatado);
-              if (cepLimpo.length === 8) {
-                buscarCep(cepLimpo);
-              }
-            }}
-            placeholder="00000-000"
-            placeholderTextColor="#94A3B8"
-            keyboardType="number-pad"
-          />
-          {buscandoCep ? <ActivityIndicator size="small" style={styles.cepLoader} /> : null}
-          {renderErro('cep')}
-
-          <Text style={styles.label}>Endereço</Text>
-          <TextInput
-            style={[styles.input, erros.endereco && styles.inputError]}
-            value={endereco}
-            onChangeText={(text) => {
-              setEndereco(text);
-              marcarComoTocado('endereco');
-              validarCampoTempoReal('endereco', text);
-            }}
-            placeholder="Rua, avenida..."
-            placeholderTextColor="#94A3B8"
-          />
-          {renderErro('endereco')}
-
-          <Text style={styles.label}>Número</Text>
-          <TextInput
-            style={[styles.input, erros.numero && styles.inputError]}
-            value={numero}
-            onChangeText={(text) => {
-              setNumero(text);
-              marcarComoTocado('numero');
-              validarCampoTempoReal('numero', text);
-            }}
-            placeholder="Número"
-            placeholderTextColor="#94A3B8"
-            keyboardType="default"
-          />
-          {renderErro('numero')}
-
-          <Text style={styles.label}>Cidade</Text>
-          <TextInput
-            style={[styles.input, erros.cidade && styles.inputError]}
-            value={cidade}
-            onChangeText={(text) => {
-              setCidade(text);
-              marcarComoTocado('cidade');
-              validarCampoTempoReal('cidade', text);
-            }}
-            placeholder="Cidade"
-            placeholderTextColor="#94A3B8"
-          />
-          {renderErro('cidade')}
-
-          <Text style={styles.label}>Estado</Text>
-          <TextInput
-            style={[styles.input, erros.estado && styles.inputError]}
-            value={estado}
-            onChangeText={(text) => {
-              const valor = text.toUpperCase().slice(0, 2);
-              setEstado(valor);
-              marcarComoTocado('estado');
-              validarCampoTempoReal('estado', valor);
-            }}
-            placeholder="UF"
-            placeholderTextColor="#94A3B8"
-            maxLength={2}
-            autoCapitalize="characters"
-          />
-          {renderErro('estado')}
-
-          <Text style={styles.label}>Sua Fatec</Text>
-          <View style={[styles.selectWrapper, erros.fatec && styles.inputError]}>
-            <Picker
-              selectedValue={fatec}
-              onValueChange={(itemValue) => {
-                setFatec(itemValue);
-                marcarComoTocado('fatec');
-                validarCampoTempoReal('fatec', itemValue);
-              }}
-              style={styles.picker}
-              dropdownIconColor="#0F172A"
-            >
-              <Picker.Item label="Selecione" value="" color="#64748B" />
-              {fatecOptions.map((item) => (
-                <Picker.Item key={item} label={item} value={item} />
-              ))}
-            </Picker>
-          </View>
-          {renderErro('fatec')}
-
-          <Text style={styles.label}>RA</Text>
-          <TextInput
-            style={[styles.input, erros.ra && styles.inputError]}
-            value={ra}
-            onChangeText={(text) => {
-              setRa(text);
-              marcarComoTocado('ra');
-              validarCampoTempoReal('ra', text);
-            }}
-            placeholder="Digite seu RA"
-            placeholderTextColor="#94A3B8"
-            keyboardType="number-pad"
-          />
-          {renderErro('ra')}
-
-          <Text style={styles.label}>Gênero</Text>
-          <View style={[styles.selectWrapper, erros.genero && styles.inputError]}>
-            <Picker
-              selectedValue={genero}
-              onValueChange={(itemValue) => {
-                setGenero(itemValue);
-                marcarComoTocado('genero');
-                validarCampoTempoReal('genero', itemValue);
-              }}
-              style={styles.picker}
-              dropdownIconColor="#0F172A"
-            >
-              <Picker.Item label="Selecione" value="" color="#64748B" />
-              {generoOptions.map((item) => (
-                <Picker.Item key={item} label={item} value={item} />
-              ))}
-            </Picker>
-          </View>
-          {renderErro('genero')}
-
-          <Text style={styles.label}>Data de nascimento</Text>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={[styles.dateInputButton, erros.dataNascimento && styles.inputError]}
-            onPress={() => setMostrarDatePicker(true)}
-          >
-            <Text style={dataNascimento ? styles.dateInputText : styles.datePlaceholderText}>
-              {dataNascimento || 'dd/mm/aaaa'}
-            </Text>
-            <Text style={styles.dateIcon}>🗓️</Text>
-          </TouchableOpacity>
-          {renderErro('dataNascimento')}
-
-          {mostrarDatePicker && (
-            <DateTimePicker
-              value={dataSelecionada}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              maximumDate={new Date()}
-              onChange={onChangeDate}
+          <View style={styles.logoBox}>
+            <Image
+              source={require('../../assets/images/logo-faculride-white.png')}
+              style={styles.logo}
+              resizeMode="contain"
             />
-          )}
-
-          {tipoUsuario === 'motorista' && (
-            <>
-              <Text style={styles.sectionTitle}>Dados do veículo</Text>
-
-              <Text style={styles.label}>CNH</Text>
-              <TextInput
-                style={[styles.input, erros.cnh && styles.inputError]}
-                value={cnh}
-                onChangeText={(text) => {
-                  const valorFormatado = formatarCNH(text);
-                  setCnh(valorFormatado);
-                  marcarComoTocado('cnh');
-                  validarCampoTempoReal('cnh', valorFormatado);
-                }}
-                placeholder="Digite sua CNH"
-                placeholderTextColor="#94A3B8"
-                keyboardType="number-pad"
-              />
-              {renderErro('cnh')}
-
-              <Text style={styles.label}>Modelo do carro</Text>
-              <TextInput
-                style={[styles.input, erros.modeloCarro && styles.inputError]}
-                value={modeloCarro}
-                onChangeText={(text) => {
-                  setModeloCarro(text);
-                  marcarComoTocado('modeloCarro');
-                  validarCampoTempoReal('modeloCarro', text);
-                }}
-                placeholder="Ex: HB20"
-                placeholderTextColor="#94A3B8"
-              />
-              {renderErro('modeloCarro')}
-
-              <Text style={styles.label}>Ano do carro</Text>
-              <TextInput
-                style={[styles.input, erros.anoCarro && styles.inputError]}
-                value={anoCarro}
-                onChangeText={(text) => {
-                  const apenasNumero = limparNumero(text).slice(0, 4);
-                  setAnoCarro(apenasNumero);
-                  marcarComoTocado('anoCarro');
-                  validarCampoTempoReal('anoCarro', apenasNumero);
-                }}
-                placeholder={anosCarro[0]}
-                placeholderTextColor="#94A3B8"
-                keyboardType="number-pad"
-                maxLength={4}
-              />
-              {renderErro('anoCarro')}
-
-              <Text style={styles.label}>Cor do carro</Text>
-              <TextInput
-                style={[styles.input, erros.corCarro && styles.inputError]}
-                value={corCarro}
-                onChangeText={(text) => {
-                  setCorCarro(text);
-                  marcarComoTocado('corCarro');
-                  validarCampoTempoReal('corCarro', text);
-                }}
-                placeholder="Ex: Preto"
-                placeholderTextColor="#94A3B8"
-              />
-              {renderErro('corCarro')}
-
-              <Text style={styles.label}>Placa</Text>
-              <TextInput
-                style={[styles.input, erros.placa && styles.inputError]}
-                value={placa}
-                onChangeText={(text) => {
-                  const valorFormatado = formatarPlaca(text);
-                  setPlaca(valorFormatado);
-                  marcarComoTocado('placa');
-                  validarCampoTempoReal('placa', valorFormatado);
-                }}
-                placeholder="ABC1234"
-                placeholderTextColor="#94A3B8"
-                autoCapitalize="characters"
-                maxLength={7}
-              />
-              {renderErro('placa')}
-            </>
-          )}
-
-          <Text style={styles.sectionTitle}>Senha de acesso</Text>
-
-          <Text style={styles.label}>Senha</Text>
-          <View style={[styles.passwordContainer, erros.senha && styles.inputError]}>
-            <TextInput
-              value={senha}
-              onChangeText={(text) => {
-                setSenha(text);
-                marcarComoTocado('senha');
-                validarCampoTempoReal('senha', text);
-
-                if (touched.repetirSenha || repetirSenha) {
-                  validarCampoTempoReal('repetirSenha', repetirSenha);
-                }
-              }}
-              placeholder="Digite sua senha"
-              placeholderTextColor="#94A3B8"
-              secureTextEntry={!mostrarSenha}
-              style={styles.passwordInput}
-            />
-            <TouchableOpacity onPress={() => setMostrarSenha(!mostrarSenha)}>
-              <Text style={styles.showPasswordText}>
-                {mostrarSenha ? 'Ocultar' : 'Mostrar'}
-              </Text>
-            </TouchableOpacity>
           </View>
-          {renderErro('senha')}
 
-          <Text style={styles.passwordHint}>
-            A senha deve ter no mínimo 6 caracteres, 1 letra minúscula, 1 maiúscula, 1 número e 1 caractere especial.
+          <Text style={styles.title}>Criar conta</Text>
+          <Text style={styles.subtitle}>
+            Preencha os dados abaixo para entrar no FaculRide.
           </Text>
 
-          <Text style={styles.label}>Repetir senha</Text>
-          <View style={[styles.passwordContainer, erros.repetirSenha && styles.inputError]}>
-            <TextInput
-              value={repetirSenha}
-              onChangeText={(text) => {
-                setRepetirSenha(text);
-                marcarComoTocado('repetirSenha');
-                validarCampoTempoReal('repetirSenha', text);
-              }}
-              placeholder="Repita sua senha"
-              placeholderTextColor="#94A3B8"
-              secureTextEntry={!mostrarRepetirSenha}
-              style={styles.passwordInput}
-            />
-            <TouchableOpacity onPress={() => setMostrarRepetirSenha(!mostrarRepetirSenha)}>
-              <Text style={styles.showPasswordText}>
-                {mostrarRepetirSenha ? 'Ocultar' : 'Mostrar'}
+          <View style={styles.formCard}>
+            <Text style={styles.sectionTitle}>Tipo de usuário</Text>
+
+            <View style={styles.segmentedRow}>
+              <TouchableOpacity
+                style={[
+                  styles.segmentButton,
+                  tipoUsuario === 'passageiro' && styles.segmentButtonActive,
+                ]}
+                onPress={() => aoTrocarTipoUsuario('passageiro')}
+              >
+                <Text
+                  style={[
+                    styles.segmentButtonText,
+                    tipoUsuario === 'passageiro' && styles.segmentButtonTextActive,
+                  ]}
+                >
+                  Passageiro
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.segmentButton,
+                  tipoUsuario === 'motorista' && styles.segmentButtonActive,
+                ]}
+                onPress={() => aoTrocarTipoUsuario('motorista')}
+              >
+                <Text
+                  style={[
+                    styles.segmentButtonText,
+                    tipoUsuario === 'motorista' && styles.segmentButtonTextActive,
+                  ]}
+                >
+                  Motorista
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.label}>Foto de perfil (opcional)</Text>
+            <TouchableOpacity style={styles.photoButton} onPress={escolherFoto}>
+              <Text style={styles.photoButtonText}>
+                {fotoUri ? 'Trocar foto' : 'Selecionar foto'}
               </Text>
             </TouchableOpacity>
-          </View>
-          {renderErro('repetirSenha')}
 
-          <TouchableOpacity
-            style={[styles.primaryButton, carregando && styles.buttonDisabled]}
-            onPress={cadastrar}
-            disabled={carregando}
-          >
-            {carregando ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.primaryButtonText}>Cadastrar</Text>
+            {fotoUri ? (
+              <Image source={{ uri: fotoUri as string }} style={styles.photoPreview} />
+            ) : null}
+
+            <Text style={styles.label}>Nome completo</Text>
+            <TextInput
+              style={[styles.input, erros.nome && styles.inputError]}
+              value={nome}
+              onChangeText={(text) => {
+                setNome(text);
+                marcarComoTocado('nome');
+                validarCampoTempoReal('nome', text);
+              }}
+              placeholder="Digite seu nome completo"
+              placeholderTextColor="#94A3B8"
+            />
+            {renderErro('nome')}
+
+            <Text style={styles.label}>CPF</Text>
+            <TextInput
+              style={[styles.input, erros.cpf && styles.inputError]}
+              value={cpf}
+              onChangeText={(text) => {
+                const valorFormatado = formatarCPF(text);
+                setCpf(valorFormatado);
+                marcarComoTocado('cpf');
+                validarCampoTempoReal('cpf', valorFormatado);
+              }}
+              placeholder="000.000.000-00"
+              placeholderTextColor="#94A3B8"
+              keyboardType="number-pad"
+            />
+            {renderErro('cpf')}
+
+            <Text style={styles.label}>E-mail</Text>
+            <TextInput
+              style={[styles.input, erros.email && styles.inputError]}
+              value={email}
+              onChangeText={(text) => {
+                setEmail(text);
+                marcarComoTocado('email');
+                validarCampoTempoReal('email', text);
+              }}
+              placeholder="Digite seu e-mail"
+              placeholderTextColor="#94A3B8"
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            {renderErro('email')}
+
+            <Text style={styles.label}>Telefone</Text>
+            <TextInput
+              style={[styles.input, erros.telefone && styles.inputError]}
+              value={telefone}
+              onChangeText={(text) => {
+                const valorFormatado = formatarTelefone(text);
+                setTelefone(valorFormatado);
+                marcarComoTocado('telefone');
+                validarCampoTempoReal('telefone', valorFormatado);
+              }}
+              placeholder="(15) 99999-9999"
+              placeholderTextColor="#94A3B8"
+              keyboardType="phone-pad"
+            />
+            {renderErro('telefone')}
+
+            <Text style={styles.label}>CEP</Text>
+            <TextInput
+              style={[styles.input, erros.cep && styles.inputError]}
+              value={cep}
+              onChangeText={(text) => {
+                const valorFormatado = formatarCEP(text);
+                setCep(valorFormatado);
+                marcarComoTocado('cep');
+                validarCampoTempoReal('cep', valorFormatado);
+
+                const cepLimpo = limparNumero(valorFormatado);
+                if (cepLimpo.length === 8) {
+                  buscarCep(cepLimpo);
+                }
+              }}
+              placeholder="00000-000"
+              placeholderTextColor="#94A3B8"
+              keyboardType="number-pad"
+            />
+            {buscandoCep ? <ActivityIndicator size="small" style={styles.cepLoader} /> : null}
+            {renderErro('cep')}
+
+            <Text style={styles.label}>Endereço</Text>
+            <TextInput
+              style={[styles.input, erros.endereco && styles.inputError]}
+              value={endereco}
+              onChangeText={(text) => {
+                setEndereco(text);
+                marcarComoTocado('endereco');
+                validarCampoTempoReal('endereco', text);
+              }}
+              placeholder="Rua, avenida..."
+              placeholderTextColor="#94A3B8"
+            />
+            {renderErro('endereco')}
+
+            <Text style={styles.label}>Número</Text>
+            <TextInput
+              style={[styles.input, erros.numero && styles.inputError]}
+              value={numero}
+              onChangeText={(text) => {
+                setNumero(text);
+                marcarComoTocado('numero');
+                validarCampoTempoReal('numero', text);
+              }}
+              placeholder="Número"
+              placeholderTextColor="#94A3B8"
+              keyboardType="default"
+            />
+            {renderErro('numero')}
+
+            <Text style={styles.label}>Cidade</Text>
+            <TextInput
+              style={[styles.input, erros.cidade && styles.inputError]}
+              value={cidade}
+              onChangeText={(text) => {
+                setCidade(text);
+                marcarComoTocado('cidade');
+                validarCampoTempoReal('cidade', text);
+              }}
+              placeholder="Cidade"
+              placeholderTextColor="#94A3B8"
+            />
+            {renderErro('cidade')}
+
+            <Text style={styles.label}>Estado</Text>
+            <TextInput
+              style={[styles.input, erros.estado && styles.inputError]}
+              value={estado}
+              onChangeText={(text) => {
+                const valor = text.toUpperCase().slice(0, 2);
+                setEstado(valor);
+                marcarComoTocado('estado');
+                validarCampoTempoReal('estado', valor);
+              }}
+              placeholder="UF"
+              placeholderTextColor="#94A3B8"
+              maxLength={2}
+              autoCapitalize="characters"
+            />
+            {renderErro('estado')}
+
+            <Text style={styles.label}>Sua Fatec</Text>
+            <View style={[styles.selectWrapper, erros.fatec && styles.inputError]}>
+              <Picker
+                selectedValue={fatec}
+                onValueChange={(itemValue) => {
+                  setFatec(itemValue);
+                  marcarComoTocado('fatec');
+                  validarCampoTempoReal('fatec', itemValue);
+                }}
+                style={styles.picker}
+                dropdownIconColor="#0F172A"
+              >
+                <Picker.Item label="Selecione" value="" color="#64748B" />
+                {fatecOptions.map((item) => (
+                  <Picker.Item key={item} label={item} value={item} />
+                ))}
+              </Picker>
+            </View>
+            {renderErro('fatec')}
+
+            <Text style={styles.label}>RA</Text>
+            <TextInput
+              style={[styles.input, erros.ra && styles.inputError]}
+              value={ra}
+              onChangeText={(text) => {
+                setRa(text);
+                marcarComoTocado('ra');
+                validarCampoTempoReal('ra', text);
+              }}
+              placeholder="Digite seu RA"
+              placeholderTextColor="#94A3B8"
+              keyboardType="number-pad"
+            />
+            {renderErro('ra')}
+
+            <Text style={styles.label}>Gênero</Text>
+            <View style={[styles.selectWrapper, erros.genero && styles.inputError]}>
+              <Picker
+                selectedValue={genero}
+                onValueChange={(itemValue) => {
+                  setGenero(itemValue);
+                  marcarComoTocado('genero');
+                  validarCampoTempoReal('genero', itemValue);
+                }}
+                style={styles.picker}
+                dropdownIconColor="#0F172A"
+              >
+                <Picker.Item label="Selecione" value="" color="#64748B" />
+                {generoOptions.map((item) => (
+                  <Picker.Item key={item} label={item} value={item} />
+                ))}
+              </Picker>
+            </View>
+            {renderErro('genero')}
+
+            <Text style={styles.label}>Data de nascimento</Text>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={[styles.dateInputButton, erros.dataNascimento && styles.inputError]}
+              onPress={() => setMostrarDatePicker(true)}
+            >
+              <Text style={dataNascimento ? styles.dateInputText : styles.datePlaceholderText}>
+                {dataNascimento || 'dd/mm/aaaa'}
+              </Text>
+              <Text style={styles.dateIcon}>🗓️</Text>
+            </TouchableOpacity>
+            {renderErro('dataNascimento')}
+
+            {mostrarDatePicker && (
+              <DateTimePicker
+                value={dataSelecionada}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                maximumDate={new Date()}
+                onChange={onChangeDate}
+              />
             )}
-          </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => router.push('/(auth)/login')}
-          >
-            <Text style={styles.secondaryButtonText}>Já tenho conta</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+            {tipoUsuario === 'motorista' && (
+              <>
+                <Text style={styles.sectionTitle}>Dados do veículo</Text>
+
+                <Text style={styles.label}>CNH</Text>
+                <TextInput
+                  style={[styles.input, erros.cnh && styles.inputError]}
+                  value={cnh}
+                  onChangeText={(text) => {
+                    const valorFormatado = formatarCNH(text);
+                    setCnh(valorFormatado);
+                    marcarComoTocado('cnh');
+                    validarCampoTempoReal('cnh', valorFormatado);
+                  }}
+                  placeholder="Digite sua CNH"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="number-pad"
+                />
+                {renderErro('cnh')}
+
+                <Text style={styles.label}>
+                  Foto ou PDF da CNH
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={escolherArquivoCnh}
+                >
+                  <Text style={styles.photoButtonText}>
+                    {cnhArquivoFileName
+                      ? 'Trocar arquivo da CNH'
+                      : 'Selecionar arquivo da CNH'}
+                  </Text>
+                </TouchableOpacity>
+
+                {cnhArquivoFileName ? (
+                  <Text
+                    style={{
+                      marginTop: 8,
+                      marginBottom: 8,
+                      color: '#0F172A',
+                      fontWeight: '600',
+                    }}
+                  >
+                    {cnhArquivoFileName}
+                  </Text>
+                ) : null}
+
+                {renderErro('arquivoCnh')}
+
+                <Text style={styles.label}>Modelo do carro</Text>
+                <TextInput
+                  style={[styles.input, erros.modeloCarro && styles.inputError]}
+                  value={modeloCarro}
+                  onChangeText={(text) => {
+                    setModeloCarro(text);
+                    marcarComoTocado('modeloCarro');
+                    validarCampoTempoReal('modeloCarro', text);
+                  }}
+                  placeholder="Ex: HB20"
+                  placeholderTextColor="#94A3B8"
+                />
+                {renderErro('modeloCarro')}
+
+                <Text style={styles.label}>Ano do carro</Text>
+                <TextInput
+                  style={[styles.input, erros.anoCarro && styles.inputError]}
+                  value={anoCarro}
+                  onChangeText={(text) => {
+                    const apenasNumero = limparNumero(text).slice(0, 4);
+                    setAnoCarro(apenasNumero);
+                    marcarComoTocado('anoCarro');
+                    validarCampoTempoReal('anoCarro', apenasNumero);
+                  }}
+                  placeholder={anosCarro[0]}
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="number-pad"
+                  maxLength={4}
+                />
+                {renderErro('anoCarro')}
+
+                <Text style={styles.label}>Cor do carro</Text>
+                <TextInput
+                  style={[styles.input, erros.corCarro && styles.inputError]}
+                  value={corCarro}
+                  onChangeText={(text) => {
+                    setCorCarro(text);
+                    marcarComoTocado('corCarro');
+                    validarCampoTempoReal('corCarro', text);
+                  }}
+                  placeholder="Ex: Preto"
+                  placeholderTextColor="#94A3B8"
+                />
+                {renderErro('corCarro')}
+
+                <Text style={styles.label}>Placa</Text>
+                <TextInput
+                  style={[styles.input, erros.placa && styles.inputError]}
+                  value={placa}
+                  onChangeText={(text) => {
+                    const valorFormatado = formatarPlaca(text);
+                    setPlaca(valorFormatado);
+                    marcarComoTocado('placa');
+                    validarCampoTempoReal('placa', valorFormatado);
+                  }}
+                  placeholder="ABC1234"
+                  placeholderTextColor="#94A3B8"
+                  autoCapitalize="characters"
+                  maxLength={7}
+                />
+                {renderErro('placa')}
+              </>
+            )}
+
+            <Text style={styles.sectionTitle}>Senha de acesso</Text>
+
+            <Text style={styles.label}>Senha</Text>
+            <View style={[styles.passwordContainer, erros.senha && styles.inputError]}>
+              <TextInput
+                value={senha}
+                onChangeText={(text) => {
+                  setSenha(text);
+                  marcarComoTocado('senha');
+                  validarCampoTempoReal('senha', text);
+
+                  if (touched.repetirSenha || repetirSenha) {
+                    validarCampoTempoReal('repetirSenha', repetirSenha);
+                  }
+                }}
+                placeholder="Digite sua senha"
+                placeholderTextColor="#94A3B8"
+                secureTextEntry={!mostrarSenha}
+                style={styles.passwordInput}
+              />
+              <TouchableOpacity onPress={() => setMostrarSenha(!mostrarSenha)}>
+                <Text style={styles.showPasswordText}>
+                  {mostrarSenha ? 'Ocultar' : 'Mostrar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {renderErro('senha')}
+
+            <Text style={styles.passwordHint}>
+              A senha deve ter no mínimo 6 caracteres, 1 letra minúscula, 1 maiúscula, 1 número e 1 caractere especial.
+            </Text>
+
+            <Text style={styles.label}>Repetir senha</Text>
+            <View style={[styles.passwordContainer, erros.repetirSenha && styles.inputError]}>
+              <TextInput
+                value={repetirSenha}
+                onChangeText={(text) => {
+                  setRepetirSenha(text);
+                  marcarComoTocado('repetirSenha');
+                  validarCampoTempoReal('repetirSenha', text);
+                }}
+                placeholder="Repita sua senha"
+                placeholderTextColor="#94A3B8"
+                secureTextEntry={!mostrarRepetirSenha}
+                style={styles.passwordInput}
+              />
+              <TouchableOpacity onPress={() => setMostrarRepetirSenha(!mostrarRepetirSenha)}>
+                <Text style={styles.showPasswordText}>
+                  {mostrarRepetirSenha ? 'Ocultar' : 'Mostrar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {renderErro('repetirSenha')}
+
+            <TouchableOpacity
+              style={[styles.primaryButton, carregando && styles.buttonDisabled]}
+              onPress={cadastrar}
+              disabled={carregando}
+            >
+              {carregando ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Cadastrar</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => router.push('/(auth)/login')}
+            >
+              <Text style={styles.secondaryButtonText}>Já tenho conta</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -1141,10 +1348,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   container: {
     paddingHorizontal: 20,
     paddingTop: 18,
-    paddingBottom: 40,
+    paddingBottom: 90,
+    flexGrow: 1,
   },
   backButton: {
     alignSelf: 'flex-start',
