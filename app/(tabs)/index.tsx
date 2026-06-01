@@ -1009,18 +1009,15 @@ export default function HomeScreen() {
 
       if (!datas.length) return "";
 
-      const mesesUnicos = new Set(
-        datas.map((d) => {
-          const [ano, mes] = d.split("-");
-          return `${ano}-${mes}`;
-        })
-      );
+      const datasOrdenadas = [...datas].sort((a, b) => a.localeCompare(b));
 
-      if (mesesUnicos.size >= 3) {
-        return "Semestral";
+      if (datasOrdenadas.length >= 20) {
+        return `Semestre fechado: ${formatarData(datasOrdenadas[0])} até ${formatarData(
+          datasOrdenadas[datasOrdenadas.length - 1]
+        )}`;
       }
 
-      return datas.map(formatarData).join(", ");
+      return datasOrdenadas.map(formatarData).join(", ");
     },
     [formatarData, obterDatasViagem]
   );

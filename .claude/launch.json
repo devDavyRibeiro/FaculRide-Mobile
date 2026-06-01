@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "faculride-diagrama",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "C:\\Users\\heri_\\Desktop"],
+      "port": 4501,
+      "autoPort": true
+    }
+  ]
+}

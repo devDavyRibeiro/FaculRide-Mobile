@@ -822,18 +822,15 @@ export default function EncontreScreen() {
 
       if (!datas.length) return "";
 
-      const mesesUnicos = new Set(
-        datas.map((d) => {
-          const [ano, mes] = d.split("-");
-          return `${ano}-${mes}`;
-        })
-      );
+      const datasOrdenadas = [...datas].sort((a, b) => a.localeCompare(b));
 
-      if (mesesUnicos.size >= 3) {
-        return "Semestral";
+      if (datasOrdenadas.length >= 20) {
+        return `Semestre fechado: ${formatarData(datasOrdenadas[0])} até ${formatarData(
+          datasOrdenadas[datasOrdenadas.length - 1]
+        )}`;
       }
 
-      return datas.map(formatarData).join(", ");
+      return datasOrdenadas.map(formatarData).join(", ");
     },
     [formatarData, obterDatasViagem]
   );
@@ -973,73 +970,6 @@ export default function EncontreScreen() {
     [carregarDados, viagemSelecionada]
   );
 
-  const cancelarCarona = useCallback(
-    (viagem: Viagem) => {
-      const idViagem = String(viagem.idViagem ?? viagem.id ?? "");
-
-      if (!idViagem) {
-        Alert.alert("Erro", "Não foi possível identificar esta carona.");
-        return;
-      }
-
-      Alert.alert(
-        "Cancelar carona",
-        "Tem certeza que deseja cancelar esta carona?",
-        [
-          { text: "Voltar", style: "cancel" },
-          {
-            text: "Cancelar carona",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                setExcluindoId(idViagem);
-
-                const token = await AsyncStorage.getItem("token");
-
-                const headers: HeadersInit = {
-                  "Content-Type": "application/json",
-                };
-
-                if (token) {
-                  headers.Authorization = `Bearer ${token}`;
-                }
-
-                const response = await fetch(`${API_URL}/viagem/${idViagem}/cancelar`, {
-                  method: "PATCH",
-                  headers,
-                });
-
-                const payload = await response.json().catch(() => null);
-
-                if (!response.ok) {
-                  throw new Error(
-                    payload?.erro || "Não foi possível cancelar a carona."
-                  );
-                }
-
-                if (
-                  viagemSelecionada &&
-                  String(viagemSelecionada.idViagem ?? viagemSelecionada.id ?? "") === idViagem
-                ) {
-                  setViagemSelecionada(null);
-                }
-
-                Alert.alert("Sucesso", "Carona cancelada com sucesso.");
-                carregarDados(true);
-              } catch (error: any) {
-                console.error("Erro ao cancelar carona:", error);
-                Alert.alert("Erro", error?.message || "Não foi possível cancelar a carona.");
-              } finally {
-                setExcluindoId(null);
-              }
-            },
-          },
-        ]
-      );
-    },
-    [carregarDados, viagemSelecionada]
-  );
-
   const editarCarona = useCallback(
     (viagem: Viagem) => {
       router.push({
@@ -1131,19 +1061,7 @@ export default function EncontreScreen() {
                   <Text style={styles.editButtonText}>Editar carona</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[
-                    styles.cancelButton,
-                    excluindoId === idViagem && styles.buttonDisabled,
-                  ]}
-                  onPress={() => cancelarCarona(item)}
-                  disabled={excluindoId === idViagem}
-                >
-                  <Text style={styles.cancelButtonText}>
-                    {excluindoId === idViagem ? "Processando..." : "Cancelar"}
-                  </Text>
-                </TouchableOpacity>
-
+              
                 <TouchableOpacity
                   style={[
                     styles.deleteButton,
@@ -1173,7 +1091,6 @@ export default function EncontreScreen() {
       abrirContato,
       editarCarona,
       excluirCarona,
-      cancelarCarona,
       excluindoId,
       formatarDatasResumo,
       meuId,
@@ -1287,15 +1204,6 @@ export default function EncontreScreen() {
                         >
                           <Text style={styles.selectedEditButtonText}>
                             Editar carona
-                          </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={styles.selectedCancelButton}
-                          onPress={() => cancelarCarona(viagemSelecionada)}
-                        >
-                          <Text style={styles.selectedCancelButtonText}>
-                            Cancelar
                           </Text>
                         </TouchableOpacity>
 
@@ -1565,24 +1473,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  selectedCancelButton: {
-    borderRadius: 12,
-    backgroundColor: "#FFF7ED",
-    borderWidth: 1,
-    borderColor: "#FDBA74",
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 96,
-  },
-
-  selectedCancelButtonText: {
-    color: "#C2410C",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
   selectedDeleteButton: {
     borderRadius: 12,
     backgroundColor: "#FEF2F2",
@@ -1793,24 +1683,6 @@ const styles = StyleSheet.create({
   },
 
   editButtonText: {
-    color: "#C2410C",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
-  cancelButton: {
-    borderRadius: 12,
-    backgroundColor: "#FFF7ED",
-    borderWidth: 1,
-    borderColor: "#FDBA74",
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 96,
-  },
-
-  cancelButtonText: {
     color: "#C2410C",
     fontSize: 13,
     fontWeight: "700",

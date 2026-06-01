@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,6 +21,18 @@ type ErrosType = {
   [key: string]: string;
 };
 
+type ErrosSenhaType = {
+  senhaAtual?: string;
+  novaSenha?: string;
+  confirmarSenha?: string;
+};
+
+type TouchedSenhaType = {
+  senhaAtual?: boolean;
+  novaSenha?: boolean;
+  confirmarSenha?: boolean;
+};
+
 export default function LoginScreen() {
   const params = useLocalSearchParams();
 
@@ -29,14 +42,85 @@ export default function LoginScreen() {
   const [carregando, setCarregando] = useState(false);
   const [erros, setErros] = useState<ErrosType>({});
 
+  const [modalSenhaVisible, setModalSenhaVisible] = useState(false);
+
+  const [senhaAtual, setSenhaAtual] = useState('');
+  const [novaSenha, setNovaSenha] = useState('');
+  const [confirmarSenha, setConfirmarSenha] = useState('');
+
+  const [salvandoSenha, setSalvandoSenha] = useState(false);
+
+  const [errosSenha, setErrosSenha] = useState<ErrosSenhaType>({});
+  const [touchedSenha, setTouchedSenha] = useState<TouchedSenhaType>({});
+
+  const [mostrarSenhaAtual, setMostrarSenhaAtual] = useState(false);
+  const [mostrarNovaSenha, setMostrarNovaSenha] = useState(false);
+  const [mostrarConfirmarSenha, setMostrarConfirmarSenha] = useState(false);
+
   useEffect(() => {
     if (typeof params.email === 'string') {
       setEmail(params.email);
     }
   }, [params.email]);
 
+  function validarSenhaForte(valor: string) {
+    return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{6,}$/.test(
+      valor
+    );
+  }
+
   function validarEmail(valor: string) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
+  }
+
+  function getErroSenhaCampo(
+    campo: 'senhaAtual' | 'novaSenha' | 'confirmarSenha',
+    valor: string
+  ) {
+    switch (campo) {
+      case 'senhaAtual':
+        if (!valor?.trim()) return 'Digite sua senha atual.';
+        return '';
+
+      case 'novaSenha':
+        if (!valor?.trim()) return 'Digite a nova senha.';
+        if (!validarSenhaForte(valor)) {
+          return 'A nova senha deve ter no mínimo 6 caracteres, 1 letra minúscula, 1 maiúscula, 1 número e 1 caractere especial.';
+        }
+        return '';
+
+      case 'confirmarSenha':
+        if (!valor?.trim()) return 'Confirme a nova senha.';
+        if (valor !== novaSenha) return 'As senhas não coincidem.';
+        return '';
+
+      default:
+        return '';
+    }
+  }
+
+  function marcarSenhaComoTocada(
+    campo: 'senhaAtual' | 'novaSenha' | 'confirmarSenha'
+  ) {
+    setTouchedSenha((prev) => ({ ...prev, [campo]: true }));
+  }
+
+  function validarCampoSenhaTempoReal(
+    campo: 'senhaAtual' | 'novaSenha' | 'confirmarSenha',
+    valor: string
+  ) {
+    const mensagem = getErroSenhaCampo(campo, valor);
+    setErrosSenha((prev) => ({
+      ...prev,
+      [campo]: mensagem || undefined,
+    }));
+  }
+
+  function renderErroSenha(
+    campo: 'senhaAtual' | 'novaSenha' | 'confirmarSenha'
+  ) {
+    if (!errosSenha[campo]) return null;
+    return <Text style={styles.errorText}>{errosSenha[campo]}</Text>;
   }
 
   function setErroCampo(campo: string, mensagem?: string) {
@@ -150,6 +234,7 @@ export default function LoginScreen() {
       }
 
       await AsyncStorage.setItem('usuario', JSON.stringify(usuario));
+      await AsyncStorage.setItem('usuarioLogado', JSON.stringify(usuario));
 
       router.replace('/(tabs)');
     } catch (error: any) {
@@ -157,6 +242,94 @@ export default function LoginScreen() {
       Alert.alert('Erro no login', error?.message || 'Não foi possível entrar.');
     } finally {
       setCarregando(false);
+    }
+  }
+
+  async function alterarSenha() {
+    const erroSenhaAtual = getErroSenhaCampo('senhaAtual', senhaAtual);
+    const erroNovaSenha = getErroSenhaCampo('novaSenha', novaSenha);
+    const erroConfirmarSenha = getErroSenhaCampo(
+      'confirmarSenha',
+      confirmarSenha
+    );
+
+    setTouchedSenha({
+      senhaAtual: true,
+      novaSenha: true,
+      confirmarSenha: true,
+    });
+
+    setErrosSenha({
+      senhaAtual: erroSenhaAtual || undefined,
+      novaSenha: erroNovaSenha || undefined,
+      confirmarSenha: erroConfirmarSenha || undefined,
+    });
+
+    if (erroSenhaAtual || erroNovaSenha || erroConfirmarSenha) {
+      Alert.alert('Aviso', 'Corrija os campos de senha antes de continuar.');
+      return;
+    }
+
+    try {
+      setSalvandoSenha(true);
+
+      const token = await AsyncStorage.getItem('token');
+
+      if (!token) {
+        Alert.alert('Erro', 'Token não encontrado.');
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/usuario/alterar-senha`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          senhaAtual,
+          novaSenha,
+          confirmarSenha,
+        }),
+      });
+
+      const responseText = await response.text();
+
+      let data: any = {};
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        data = { raw: responseText };
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            data?.erro ||
+            data?.error ||
+            data?.raw ||
+            'Não foi possível alterar a senha.'
+        );
+      }
+
+      setSenhaAtual('');
+      setNovaSenha('');
+      setConfirmarSenha('');
+      setErrosSenha({});
+      setTouchedSenha({});
+      setMostrarSenhaAtual(false);
+      setMostrarNovaSenha(false);
+      setMostrarConfirmarSenha(false);
+      setModalSenhaVisible(false);
+
+      Alert.alert('Sucesso', 'Senha alterada com sucesso.');
+    } catch (error: any) {
+      Alert.alert(
+        'Erro',
+        error?.message || 'Não foi possível alterar a senha.'
+      );
+    } finally {
+      setSalvandoSenha(false);
     }
   }
 
@@ -237,7 +410,10 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.linkButton}>
+          <TouchableOpacity
+            style={styles.linkButton}
+            onPress={() => setModalSenhaVisible(true)}
+          >
             <Text style={styles.linkText}>Esqueci minha senha</Text>
           </TouchableOpacity>
 
@@ -275,6 +451,139 @@ export default function LoginScreen() {
           </View>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={modalSenhaVisible}
+        animationType="slide"
+        transparent
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.sectionTitle}>Alterar senha</Text>
+
+            <Text style={styles.label}>Senha atual</Text>
+            <View
+              style={[
+                styles.passwordContainer,
+                errosSenha.senhaAtual ? styles.inputError : undefined,
+              ]}
+            >
+              <TextInput
+                style={styles.passwordInput}
+                value={senhaAtual}
+                onChangeText={(text) => {
+                  setSenhaAtual(text);
+                  marcarSenhaComoTocada('senhaAtual');
+                  validarCampoSenhaTempoReal('senhaAtual', text);
+                }}
+                placeholder="Digite sua senha atual"
+                placeholderTextColor="#94A3B8"
+                secureTextEntry={!mostrarSenhaAtual}
+              />
+              <TouchableOpacity
+                onPress={() => setMostrarSenhaAtual(!mostrarSenhaAtual)}
+              >
+                <Text style={styles.showPasswordText}>
+                  {mostrarSenhaAtual ? 'Ocultar' : 'Mostrar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {renderErroSenha('senhaAtual')}
+
+            <Text style={styles.label}>Nova senha</Text>
+            <View
+              style={[
+                styles.passwordContainer,
+                errosSenha.novaSenha ? styles.inputError : undefined,
+              ]}
+            >
+              <TextInput
+                style={styles.passwordInput}
+                value={novaSenha}
+                onChangeText={(text) => {
+                  setNovaSenha(text);
+                  marcarSenhaComoTocada('novaSenha');
+                  validarCampoSenhaTempoReal('novaSenha', text);
+
+                  if (touchedSenha.confirmarSenha || confirmarSenha) {
+                    validarCampoSenhaTempoReal('confirmarSenha', confirmarSenha);
+                  }
+                }}
+                placeholder="Digite a nova senha"
+                placeholderTextColor="#94A3B8"
+                secureTextEntry={!mostrarNovaSenha}
+              />
+              <TouchableOpacity
+                onPress={() => setMostrarNovaSenha(!mostrarNovaSenha)}
+              >
+                <Text style={styles.showPasswordText}>
+                  {mostrarNovaSenha ? 'Ocultar' : 'Mostrar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {renderErroSenha('novaSenha')}
+
+            <Text style={styles.passwordHint}>
+              A senha deve ter no mínimo 6 caracteres, 1 letra minúscula, 1
+              maiúscula, 1 número e 1 caractere especial.
+            </Text>
+
+            <Text style={styles.label}>Confirmar nova senha</Text>
+            <View
+              style={[
+                styles.passwordContainer,
+                errosSenha.confirmarSenha ? styles.inputError : undefined,
+              ]}
+            >
+              <TextInput
+                style={styles.passwordInput}
+                value={confirmarSenha}
+                onChangeText={(text) => {
+                  setConfirmarSenha(text);
+                  marcarSenhaComoTocada('confirmarSenha');
+                  validarCampoSenhaTempoReal('confirmarSenha', text);
+                }}
+                placeholder="Repita a nova senha"
+                placeholderTextColor="#94A3B8"
+                secureTextEntry={!mostrarConfirmarSenha}
+              />
+              <TouchableOpacity
+                onPress={() =>
+                  setMostrarConfirmarSenha(!mostrarConfirmarSenha)
+                }
+              >
+                <Text style={styles.showPasswordText}>
+                  {mostrarConfirmarSenha ? 'Ocultar' : 'Mostrar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {renderErroSenha('confirmarSenha')}
+
+            <TouchableOpacity
+              style={[
+                styles.secondaryButton,
+                salvandoSenha && styles.buttonDisabled,
+              ]}
+              onPress={alterarSenha}
+              disabled={salvandoSenha}
+            >
+              {salvandoSenha ? (
+                <ActivityIndicator color="#0F172A" />
+              ) : (
+                <Text style={styles.secondaryButtonText}>Alterar Senha</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => setModalSenhaVisible(false)}
+              disabled={salvandoSenha}
+            >
+              <Text style={styles.cancelButtonText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -423,6 +732,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  passwordHint: {
+    marginTop: 6,
+    color: '#64748B',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  cancelButton: {
+    marginTop: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#64748B',
+    fontSize: 15,
+    fontWeight: '600',
+  },
   infoLinksBox: {
     marginTop: 18,
     flexDirection: 'row',
@@ -439,5 +777,11 @@ const styles = StyleSheet.create({
   infoDivider: {
     fontSize: 13,
     color: '#94A3B8',
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 20,
   },
 });

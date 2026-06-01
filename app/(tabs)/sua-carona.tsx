@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
+import { Picker } from "@react-native-picker/picker";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -31,6 +32,7 @@ type CalendarioMes = {
 };
 
 type ModoVigencia = "mensal" | "semestre";
+const TIME_ZONE = "America/Sao_Paulo";
 
 function formatarHora(date: Date) {
   const horas = String(date.getHours()).padStart(2, "0");
@@ -693,13 +695,18 @@ export default function MapaScreen() {
           />
 
           <Text style={styles.label}>Destino</Text>
-          <TextInput
-            style={styles.input}
-            value={destino}
-            onChangeText={setDestino}
-            placeholder="Selecione o destino"
-            placeholderTextColor="#9CA3AF"
-          />
+
+          <View style={styles.selectWrapper}>
+            <Picker
+              selectedValue={destino}
+              onValueChange={(value) => setDestino(value)}
+              style={styles.picker}
+              dropdownIconColor="#0F172A"
+            >
+              <Picker.Item label="Selecione o destino" value="" color="#64748B" />
+              <Picker.Item label="FATEC Votorantim" value="FATEC Votorantim" />
+            </Picker>
+          </View>
 
           <Text style={styles.label}>Horário de Entrada na Fatec</Text>
           <TouchableOpacity
@@ -954,7 +961,9 @@ export default function MapaScreen() {
               value={horaEntradaTemp}
               mode="time"
               is24Hour
-              display="spinner"
+              display="default"
+              locale="pt-BR"
+              timeZoneName={TIME_ZONE}
               onChange={onChangeHoraEntrada}
               style={styles.iosPicker}
             />
@@ -985,7 +994,9 @@ export default function MapaScreen() {
               value={horaSaidaTemp}
               mode="time"
               is24Hour
-              display="spinner"
+              display="default"
+              locale="pt-BR"
+              timeZoneName={TIME_ZONE}
               onChange={onChangeHoraSaida}
               style={styles.iosPicker}
             />
@@ -1066,6 +1077,17 @@ const styles = StyleSheet.create({
     color: "#111827",
     marginBottom: 6,
     marginTop: 12,
+  },
+  selectWrapper: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 14,
+    overflow: "hidden",
+    marginBottom: 12,
+  },
+  picker: {
+    color: "#0F172A",
   },
   input: {
     backgroundColor: "#F9FAFB",
