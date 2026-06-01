@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
+import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
@@ -62,6 +63,9 @@ export default function CadastroScreen() {
   const [fotoBase64, setFotoBase64] = useState<string | null>(null);
   const [fotoMimeType, setFotoMimeType] = useState<string | null>(null);
   const [fotoFileName, setFotoFileName] = useState<string | null>(null);
+  const [cnhArquivoUri, setCnhArquivoUri] = useState<string | null>(null);
+  const [cnhArquivoMimeType, setCnhArquivoMimeType] = useState<string | null>(null);
+  const [cnhArquivoFileName, setCnhArquivoFileName] = useState<string | null>(null);
 
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [carregando, setCarregando] = useState(false);
@@ -302,6 +306,12 @@ export default function CadastroScreen() {
         }
         return '';
 
+      case 'arquivoCnh':
+        if (tipoUsuario === 'motorista' && !cnhArquivoUri) {
+          return 'Selecione a foto ou PDF da CNH.';
+        }
+        return '';
+
       default:
         return '';
     }
@@ -334,6 +344,7 @@ export default function CadastroScreen() {
       anoCarro: true,
       corCarro: true,
       placa: true,
+      arquivoCnh: true,
     });
   }
 
@@ -396,6 +407,48 @@ export default function CadastroScreen() {
     setFotoFileName(asset.fileName || `foto-perfil.${asset.mimeType?.split('/')[1] || 'jpg'}`);
   }
 
+  async function escolherArquivoCnh() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'image/jpeg',
+          'image/png',
+          'image/webp',
+          'application/pdf',
+        ],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled) return;
+
+      const arquivo = result.assets?.[0];
+
+      if (!arquivo?.uri) return;
+
+      if ((arquivo.size || 0) > 5 * 1024 * 1024) {
+        Alert.alert(
+          'Arquivo muito grande',
+          'A CNH deve possuir no máximo 5MB.'
+        );
+        return;
+      }
+
+      setCnhArquivoUri(arquivo.uri);
+      setCnhArquivoMimeType(
+        arquivo.mimeType || 'application/pdf'
+      );
+      setCnhArquivoFileName(
+        arquivo.name || 'cnh'
+      );
+
+      marcarComoTocado('arquivoCnh');
+      setErroCampo('arquivoCnh');
+    } catch (error) {
+      console.log('ERRO CNH:', error);
+    }
+  }
+
   function validarFormulario() {
     const novosErros: ErrosType = {};
 
@@ -429,6 +482,7 @@ export default function CadastroScreen() {
         anoCarro,
         corCarro,
         placa,
+        arquivoCnh: cnhArquivoUri || '',
       };
 
       Object.entries(camposMotorista).forEach(([campo, valor]) => {
@@ -442,50 +496,118 @@ export default function CadastroScreen() {
   }
 
   async function uploadFoto(token: string) {
-    if (!fotoUri) return null;
+  if (!fotoUri) return null;
+
+  try {
+    const formData = new FormData();
+
+    formData.append('file', {
+      uri: fotoUri,
+      name: fotoFileName || 'foto-perfil.jpg',
+      type: fotoMimeType || 'image/jpeg',
+    } as any);
+
+    const response = await fetch(`${API_URL}/usuario/foto/upload`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    const responseText = await response.text();
+
+    let data: any = {};
 
     try {
-      const formData = new FormData();
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      data = { raw: responseText };
+    }
 
-      formData.append('file', {
-        uri: fotoUri,
-        name: fotoFileName || 'foto-perfil.jpg',
-        type: fotoMimeType || 'image/jpeg',
-      } as any);
+    if (!response.ok) {
+      throw new Error(
+        data?.message ||
+        data?.erro ||
+        data?.error ||
+        data?.raw ||
+        'Não foi possível enviar a foto.'
+      );
+    }
 
-      const response = await fetch(`${API_URL}/usuario/foto/upload`, {
-        method: 'POST',
+    return data;
+  } catch (error) {
+    console.log('ERRO UPLOAD FOTO:', error);
+    return null;
+  }
+}
+
+async function uploadCnh(token: string) {
+  if (!cnhArquivoUri) return null;
+
+  try {
+    const formData = new FormData();
+
+    formData.append('file', {
+      uri: cnhArquivoUri,
+      name: cnhArquivoFileName || 'cnh.pdf',
+      type: cnhArquivoMimeType || 'application/pdf',
+    } as any);
+
+    const response = await fetch(`${API_URL}/usuario/cnh/upload`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    const responseText = await response.text();
+
+    let data: any = {};
+
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      data = { raw: responseText };
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        data?.message ||
+        data?.erro ||
+        data?.error ||
+        data?.raw ||
+        'Erro ao enviar CNH.'
+      );
+    }
+
+    return data;
+  } catch (error) {
+    console.log('ERRO UPLOAD CNH:', error);
+    return null;
+  }
+}
+
+async function validarCnh(
+  token: string,
+  idUsuario: number | string
+) {
+  try {
+    await fetch(
+      `${API_URL}/usuario/cnh/validar/${idUsuario}`,
+      {
+        method: 'PATCH',
         headers: {
           Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-        body: formData,
-      });
-
-      const responseText = await response.text();
-
-      let data: any = {};
-      try {
-        data = responseText ? JSON.parse(responseText) : {};
-      } catch {
-        data = { raw: responseText };
       }
-
-      if (!response.ok) {
-        throw new Error(
-          data?.message ||
-            data?.erro ||
-            data?.error ||
-            data?.raw ||
-            'Não foi possível enviar a foto.'
-        );
-      }
-
-      return data;
-    } catch (error) {
-      console.log('ERRO UPLOAD FOTO:', error);
-      return null;
-    }
+    );
+  } catch (error) {
+    console.log('ERRO VALIDAR CNH:', error);
   }
+}
 
   async function fazerLoginAutomatico() {
     const response = await fetch(`${API_URL}/usuario/login`, {
@@ -607,15 +729,58 @@ export default function CadastroScreen() {
 
       let usuarioFinal = usuario;
 
-      if (token && fotoUri) {
+if (
+  token &&
+  tipoUsuario === 'motorista' &&
+  cnhArquivoUri
+) {
+  const retornoCnh = await uploadCnh(token);
+
+  if (retornoCnh) {
+    usuarioFinal = {
+      ...usuarioFinal,
+      cnhFotoUrl:
+        retornoCnh?.cnhFotoUrl ??
+        usuarioFinal?.cnhFotoUrl ??
+        null,
+      cnhFotoPath:
+        retornoCnh?.cnhFotoPath ??
+        usuarioFinal?.cnhFotoPath ??
+        null,
+    };
+
+    const idUsuarioValidacao =
+      usuarioFinal?.idUsuario ||
+      usuarioFinal?.id;
+
+    if (idUsuarioValidacao) {
+      await validarCnh(
+        token,
+        idUsuarioValidacao
+      );
+    }
+
+    await AsyncStorage.setItem(
+      'usuario',
+      JSON.stringify(usuarioFinal)
+    );
+
+    await AsyncStorage.setItem(
+      'usuarioLogado',
+      JSON.stringify(usuarioFinal)
+    );
+  }
+}
+
+if (token && fotoUri) {
         const retornoFoto = await uploadFoto(token);
 
         if (retornoFoto) {
           usuarioFinal = {
-            ...usuario,
-            fotoUrl: retornoFoto?.fotoUrl ?? usuario?.fotoUrl ?? null,
-            fotoPath: retornoFoto?.fotoPath ?? usuario?.fotoPath ?? null,
-            foto: retornoFoto?.fotoUrl ?? usuario?.foto ?? null,
+            ...usuarioFinal,
+            fotoUrl: retornoFoto?.fotoUrl ?? usuarioFinal?.fotoUrl ?? null,
+            fotoPath: retornoFoto?.fotoPath ?? usuarioFinal?.fotoPath ?? null,
+            foto: retornoFoto?.fotoUrl ?? usuarioFinal?.foto ?? null,
           };
 
           await AsyncStorage.setItem('usuario', JSON.stringify(usuarioFinal));
@@ -759,7 +924,9 @@ export default function CadastroScreen() {
               </Text>
             </TouchableOpacity>
 
-            {fotoUri ? <Image source={{ uri: fotoUri }} style={styles.photoPreview} /> : null}
+            {fotoUri ? (
+              <Image source={{ uri: fotoUri as string }} style={styles.photoPreview} />
+            ) : null}
 
             <Text style={styles.label}>Nome completo</Text>
             <TextInput
@@ -1002,6 +1169,36 @@ export default function CadastroScreen() {
                   keyboardType="number-pad"
                 />
                 {renderErro('cnh')}
+
+                <Text style={styles.label}>
+                  Foto ou PDF da CNH
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={escolherArquivoCnh}
+                >
+                  <Text style={styles.photoButtonText}>
+                    {cnhArquivoFileName
+                      ? 'Trocar arquivo da CNH'
+                      : 'Selecionar arquivo da CNH'}
+                  </Text>
+                </TouchableOpacity>
+
+                {cnhArquivoFileName ? (
+                  <Text
+                    style={{
+                      marginTop: 8,
+                      marginBottom: 8,
+                      color: '#0F172A',
+                      fontWeight: '600',
+                    }}
+                  >
+                    {cnhArquivoFileName}
+                  </Text>
+                ) : null}
+
+                {renderErro('arquivoCnh')}
 
                 <Text style={styles.label}>Modelo do carro</Text>
                 <TextInput

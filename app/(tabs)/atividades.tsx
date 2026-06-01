@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -694,6 +695,12 @@ export default function AtividadesScreen() {
     carregarDados();
   }, [carregarDados]);
 
+  useFocusEffect(
+    useCallback(() => {
+      carregarDados();
+    }, [carregarDados])
+  );
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     carregarDados();
@@ -739,18 +746,26 @@ export default function AtividadesScreen() {
   );
 
   const formatarDatas = useCallback((viagem: Viagem) => {
-    const datas = viagem?.diasAgendados || viagem?.datasAgendadas || viagem?.datasRota || [];
+    const datas = normalizarDatasViagem(viagem);
 
     if (!Array.isArray(datas) || datas.length === 0) return "";
 
-    return datas
-      .map((d) => {
-        if (typeof d !== "string" || d.length < 10) return d;
-        const [, mes, dia] = d.slice(0, 10).split("-");
-        return `${dia}/${mes}`;
-      })
-      .join(", ");
-  }, []);
+    const datasOrdenadas = [...datas].sort((a, b) => a.localeCompare(b));
+
+    const formatarDataCurta = (d: string) => {
+      if (typeof d !== "string" || d.length < 10) return d;
+      const [, mes, dia] = d.slice(0, 10).split("-");
+      return `${dia}/${mes}`;
+    };
+
+    if (datasOrdenadas.length >= 20) {
+      return `Semestre fechado: ${formatarDataCurta(datasOrdenadas[0])} até ${formatarDataCurta(
+        datasOrdenadas[datasOrdenadas.length - 1]
+      )}`;
+    }
+
+    return datasOrdenadas.map(formatarDataCurta).join(", ");
+  }, [normalizarDatasViagem]);
 
   const obterStatusViagem = useCallback(
     (viagem: Viagem) => {

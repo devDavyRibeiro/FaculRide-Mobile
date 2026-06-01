@@ -3,6 +3,7 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
+import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -62,6 +63,15 @@ export default function GerenciarContaScreen() {
 
   const [fotoUri, setFotoUri] = useState<string | null>(null);
   const [fotoBase64, setFotoBase64] = useState<string | null>(null);
+
+  const [fotoFileName, setFotoFileName] = useState<string | null>(null);
+  const [fotoMimeType, setFotoMimeType] = useState<string | null>(null);
+
+  const [cnhArquivoUri, setCnhArquivoUri] = useState<string | null>(null);
+  const [cnhArquivoMimeType, setCnhArquivoMimeType] = useState<string | null>(null);
+  const [cnhArquivoFileName, setCnhArquivoFileName] = useState<string | null>(null);
+  const [cnhFotoUrl, setCnhFotoUrl] = useState<string | null>(null);
+  const [cnhRemovida, setCnhRemovida] = useState(false);
 
   const [senhaAtual, setSenhaAtual] = useState("");
   const [novaSenha, setNovaSenha] = useState("");
@@ -203,6 +213,14 @@ export default function GerenciarContaScreen() {
 
     if (u?.foto || u?.fotoUrl) {
       setFotoUri(u.foto || u.fotoUrl);
+    }
+    if (u?.cnhFotoUrl) {
+      setCnhFotoUrl(u.cnhFotoUrl);
+      setCnhArquivoFileName(
+        String(u.cnhFotoUrl).toLowerCase().endsWith(".pdf")
+          ? "CNH em PDF enviada"
+          : "CNH enviada"
+      );
     }
   } catch (error) {
     console.error("Erro ao carregar usuário:", error);
@@ -446,19 +464,109 @@ export default function GerenciarContaScreen() {
     const asset = result.assets[0];
     setFotoUri(asset.uri);
     setFotoBase64(asset.base64 ?? null);
+    setFotoMimeType(asset.mimeType || "image/jpeg");
+    setFotoFileName(asset.fileName || `foto-perfil.${asset.mimeType?.split("/")[1] || "jpg"}`);
+}
+
+async function uploadFoto(token: string) {
+    if (!fotoUri || !fotoFileName || !fotoMimeType) return null;
+
+    const formData = new FormData();
+
+    formData.append("file", {
+      uri: fotoUri,
+      name: fotoFileName,
+      type: fotoMimeType,
+    } as any);
+
+    const response = await fetch(`${API_URL}/usuario/foto/upload`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data?.erro || data?.message || "Erro ao enviar foto.");
+    }
+
+    return data;
   }
 
-  async function uploadFoto(token: string) {
-    if (!fotoBase64) return;
+  async function escolherArquivoCnh() {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ["image/jpeg", "image/png", "image/webp", "application/pdf"],
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
 
-    await fetch(`${API_URL}/usuario/foto/upload`, {
+    if (result.canceled) return;
+
+    const arquivo = result.assets?.[0];
+    if (!arquivo?.uri) return;
+
+    if ((arquivo.size || 0) > 5 * 1024 * 1024) {
+      Alert.alert("Arquivo muito grande", "A CNH deve possuir no máximo 5MB.");
+      return;
+    }
+
+    setCnhArquivoUri(arquivo.uri);
+    setCnhArquivoMimeType(arquivo.mimeType || "application/pdf");
+    setCnhArquivoFileName(arquivo.name || "cnh");
+    setCnhRemovida(false);
+  }
+
+  function removerCnh() {
+    setCnhArquivoUri(null);
+    setCnhArquivoMimeType(null);
+    setCnhArquivoFileName(null);
+    setCnhFotoUrl(null);
+    setCnhRemovida(true);
+  }
+
+  async function uploadCnh(token: string) {
+    if (!cnhArquivoUri || !cnhArquivoFileName || !cnhArquivoMimeType) return null;
+
+    const formData = new FormData();
+
+    formData.append("file", {
+      uri: cnhArquivoUri,
+      name: cnhArquivoFileName,
+      type: cnhArquivoMimeType,
+    } as any);
+
+    const response = await fetch(`${API_URL}/usuario/cnh/upload`, {
       method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data?.erro || data?.message || "Erro ao enviar CNH.");
+    }
+
+    return data;
+  }
+
+  async function limparCnh(token: string) {
+    if (!cnhRemovida) return;
+
+    await fetch(`${API_URL}/usuario/cnh`, {
+      method: "PATCH",
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        imagemBase64: fotoBase64,
+        cnhFotoUrl: null,
+        cnhFotoPath: null,
       }),
     });
   }
@@ -703,9 +811,27 @@ export default function GerenciarContaScreen() {
       }
 
       try {
-        await uploadFoto(token);
+        const retornoFoto = await uploadFoto(token);
+
+        if (retornoFoto?.fotoUrl) {
+          setFotoUri(retornoFoto.fotoUrl);
+        }
       } catch {
         // não bloqueia atualização se a foto falhar
+      }
+
+      try {
+        if (cnhArquivoUri) {
+          const retornoCnh = await uploadCnh(token);
+
+          if (retornoCnh?.cnhFotoUrl) {
+            setCnhFotoUrl(retornoCnh.cnhFotoUrl);
+          }
+        } else if (cnhRemovida) {
+          await limparCnh(token);
+        }
+      } catch {
+        // não bloqueia atualização se a CNH falhar
       }
 
       const usuarioAtualizado = {
@@ -715,6 +841,7 @@ export default function GerenciarContaScreen() {
         veiculo: veiculoAtualizado,
         foto: fotoUri || usuario?.foto || null,
         fotoUrl: fotoUri || usuario?.fotoUrl || null,
+        cnhFotoUrl: cnhRemovida ? null : cnhFotoUrl || usuario?.cnhFotoUrl || null,
       };
 
       setUsuario(usuarioAtualizado);
@@ -1087,6 +1214,24 @@ export default function GerenciarContaScreen() {
                 placeholderTextColor="#94A3B8"
                 keyboardType="number-pad"
               />
+
+              <Text style={styles.label}>Foto ou PDF da CNH</Text>
+
+              <TouchableOpacity style={styles.photoButton} onPress={escolherArquivoCnh}>
+                <Text style={styles.photoButtonText}>
+                  {cnhArquivoFileName ? "Trocar arquivo da CNH" : "Selecionar arquivo da CNH"}
+                </Text>
+              </TouchableOpacity>
+
+              {cnhArquivoFileName ? (
+                <Text style={styles.fileNameText}>{cnhArquivoFileName}</Text>
+              ) : null}
+
+              {cnhArquivoFileName || cnhFotoUrl ? (
+                <TouchableOpacity style={styles.removeButton} onPress={removerCnh}>
+                  <Text style={styles.removeButtonText}>Remover CNH</Text>
+                </TouchableOpacity>
+              ) : null}
 
               <Text style={styles.label}>Modelo do carro</Text>
               <TextInput
@@ -1492,4 +1637,10 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "600",
   },
+fileNameText: {
+  marginTop: 8,
+  marginBottom: 8,
+  color: "#0F172A",
+  fontWeight: "600",
+},
 });

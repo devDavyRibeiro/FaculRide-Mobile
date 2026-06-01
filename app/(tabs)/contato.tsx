@@ -240,6 +240,19 @@ export default function ContatoScreen() {
     return headers;
   }, [obterToken]);
 
+  const marcarNotificacoesComoLidas = useCallback(async () => {
+    try {
+      const headers = await obterHeaders();
+
+      await fetch(`${API_URL}/notifications/read-all`, {
+        method: "PATCH",
+        headers,
+      });
+    } catch (error) {
+      console.error("Erro ao marcar notificações como lidas:", error);
+    }
+  }, [obterHeaders]);
+
   const carregarUsuarioLocal = useCallback(async () => {
     try {
       const usuarioLogadoStr =
@@ -447,6 +460,7 @@ export default function ContatoScreen() {
     useCallback(() => {
       let interval: ReturnType<typeof setInterval> | null = null;
 
+      marcarNotificacoesComoLidas();
       sincronizarTela();
 
       interval = setInterval(() => {
@@ -456,7 +470,7 @@ export default function ContatoScreen() {
       return () => {
         if (interval) clearInterval(interval);
       };
-    }, [sincronizarTela])
+    }, [sincronizarTela, marcarNotificacoesComoLidas])
   );
 
   useEffect(() => {
