@@ -3,7 +3,7 @@ name: CI / CD - Mobile - Production
 on:
   push:
     branches:
-      - main
+      - tests/github-actions-docker
 
 permissions:
     contents: write
@@ -15,15 +15,14 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Configura o Node.js compatível com seu ambiente
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '24.14.0'
+          node-version: '22.x'
           cache: 'npm'
 
       - name: Validar mensagens dos commits
@@ -32,110 +31,96 @@ jobs:
           configFile: ./commitlint.config.js
           failOnWarnings: false
           helpMessage: "Utilize o padrão: tipo(escopo): descrição (ex: feat(ui): novo botão)"
+          continueOnError: true
 
       - name: Instalar Dependências
-        run: npm install
-
-      - name: Instalar Semver Global
-        run: npm install -g semver
+        run: npm ci
 
       - name: Calcular nova versão
         id: version
         shell: bash
         run: |
+          set -euo pipefail
           git fetch --tags --force --prune
-                
-          # Tenta pegar a última tag real
-          LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
-                
-          if [ -z "$LAST_TAG" ]; then
-            echo "Nenhuma tag encontrada. Iniciando do zero."
-            BASE_VERSION="0.0.0"
-            RANGE="HEAD"
+
+          LAST_TAG=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -v 'preview' | head -n1 || true)
+          [ -z "$LAST_TAG" ] && LAST_TAG="v0.0.0"
+          echo "Última tag de produção: $LAST_TAG"
+
+          CURRENT_VERSION="${LAST_TAG#v}"
+          BASE_VERSION=$(echo $CURRENT_VERSION | cut -d'-' -f1)
+
+          BUMP_TYPE=$(node -e "
+            const { execSync } = require('child_process');
+            try {
+              const range = '${LAST_TAG}' === 'v0.0.0' ? 'HEAD' : '${LAST_TAG}..HEAD';
+              const log = execSync('git log ' + range + ' --oneline', { encoding: 'utf8' });
+              if (/feat!|fix!|BREAKING CHANGE/i.test(log)) console.log('major');
+              else if (/feat/i.test(log)) console.log('minor');
+              else if (/fix/i.test(log)) console.log('patch');
+              else console.log('none');
+            } catch {
+              console.log('none');
+            }
+          ")
+
+          if [ "$BUMP_TYPE" = "none" ]; then
+            echo "Nenhuma alteração que exija bump de versão."
+            echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
           else
-            echo "Última tag encontrada: $LAST_TAG"
-            BASE_VERSION="${LAST_TAG#v}"
-            # Remove sufixos para cálculo (ex: 1.0.1-preview.1 -> 1.0.1)
-            BASE_VERSION=$(echo $BASE_VERSION | cut -d'-' -f1)
-            RANGE="${LAST_TAG}..HEAD"
+            NEW_VERSION=$(npx semver -i $BUMP_TYPE "$BASE_VERSION")
+            echo "Versão final: $CURRENT_VERSION -> $NEW_VERSION"
+            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
           fi
-                
-          # Detecta se houve alguma 'feat' (minor) ou 'fix' (patch)
-          INC_TYPE="patch"
-          if git log $RANGE --pretty=%s 2>/dev/null | grep -qE "^feat|^feat\!"; then
-            INC_TYPE="minor"
-          fi
-
-          # Calcula a nova versão sem sufixos
-          NEW_BASE=$(npx semver -i $INC_TYPE "$BASE_VERSION")
-
-          # Adicionamos o 'v' novamente para a tag do GitHub e Docker
-          FINAL_VERSION="v${NEW_BASE}"
-
-          echo "Calculado Produção: $FINAL_VERSION (Tipo: $INC_TYPE)"
-          echo "new_version=$FINAL_VERSION" >> $GITHUB_OUTPUT
 
       - name: Atualizar package.json
-        id: update_package
+        if: steps.version.outputs.should_deploy == 'true'
         run: |
-          # Pega a versão completa calculada no step anterior (ex: 1.1.0-preview.1)
-          # Removemos o 'v' inicial se existir, pois o package.json usa apenas números/texto
-          FULL_VERSION="${{ steps.version.outputs.new_version }}"
-          VERSION_VALUE="${FULL_VERSION#v}"
-          
-          echo "Atualizando package.json para: $VERSION_VALUE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
-            pkg.version = '$VERSION_VALUE';
-            fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2), 'utf8');
-          "
-          
-          echo "new_version=$VERSION_VALUE" >> $GITHUB_OUTPUT
+          npm version ${{ steps.version.outputs.new_version }} --git-tag-version=false
+
+          git add package.json package-lock.json
+          git commit -m "chore(release): bump version to v${{ steps.version.outputs.new_version }} [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
 
       - name: Criar Release (GitHub)
-        uses: softprops/action-gh-release@v1
+        if: steps.version.outputs.should_deploy == 'true'
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.new_version }}
-          name: "Mobile Release ${{ steps.version.outputs.new_version }}"
+          tag_name: v${{ steps.version.outputs.new_version }}
+          name: "Mobile Release v${{ steps.version.outputs.new_version }}"
           draft: false
           prerelease: false
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Commit e Push da Versão
-        env:
-          # Use o GITHUB_TOKEN se a branch develop não tiver restrições de Admin
-          # Ou um Personal Access Token (PAT) se a branch for protegida
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          git add package.json
-          
-          # O [skip ci] no final da mensagem é CRÍTICO.
-          # Ele diz ao GitHub: "Não dispare outro pipeline por causa deste commit".
-          # Sem isso, você entra em um loop infinito de builds.
-          git commit -m "chore(version): production to ${{ steps.version.outputs.new_version }} [skip ci]" || echo "Sem alterações para commitar"
-          
-          git push origin main
-      
-      - name: Login to Docker Hub
+      - name: Login Docker Hub
+        if: steps.version.outputs.should_deploy == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Setup Docker Buildx
+        if: steps.version.outputs.should_deploy == 'true'
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and push
-        uses: docker/build-push-action@v5
+        if: steps.version.outputs.should_deploy == 'true'
+        uses: docker/build-push-action@v6
         with:
+          context: .
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/faculride-mobile:production-${{ steps.version.outputs.new_version }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/faculride-mobile:production-v${{ steps.version.outputs.new_version }}
             ${{ secrets.DOCKERHUB_USERNAME }}/faculride-mobile:production-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   notify_failure:
     name: Notificar Falha
@@ -153,7 +138,6 @@ jobs:
           subject: "🚨 FALHA NO CI/CD: ${{ github.repository }}"
           to: "${{ secrets.TEAM_EMAILS }}"
           from: "GitHub Actions <no-reply@seu-dominio.com>"
-          # Texto simples e direto sem dependência de arquivos externos
           body: |
             O pipeline do projeto Mobile ${{ github.repository }} falhou!
             
