@@ -3,7 +3,7 @@ name: CI / CD - Mobile - Production
 on:
   push:
     branches:
-      - tests/github-actions-docker
+      - main
 
 permissions:
     contents: write
