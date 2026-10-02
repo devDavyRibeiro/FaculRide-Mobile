@@ -69,14 +69,6 @@ jobs:
           echo "Versão de Preview gerada: $PREVIEW_VERSION"
           echo "new_version=$PREVIEW_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Atualizar package.json
-        id: update_package
-        run: |
-          VERSION_VALUE="${{ steps.version.outputs.new_version }}"
-          echo "Atualizando package.json para: $VERSION_VALUE"
-
-          npm version $VERSION_VALUE --git-tag-version=false
-
       - name: Criar Release Preview (GitHub)
         uses: softprops/action-gh-release@v2
         with:
