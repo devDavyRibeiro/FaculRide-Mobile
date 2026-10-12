@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-<<<<<<< HEAD
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, {
@@ -12,11 +11,6 @@ import React, {
 import {
   Alert,
   Image,
-=======
-import React, { useMemo, useState } from "react";
-import {
-  Alert,
->>>>>>> origin
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -28,7 +22,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-<<<<<<< HEAD
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -841,144 +834,6 @@ export default function ContatoScreen() {
       ]
     );
   }, [conversaSelecionada, obterHeaders, listarConversas, detalhesViagemSelecionada.statusViagem]);
-=======
-import { SafeAreaView } from "react-native-safe-area-context";
-
-type Message = {
-  id: number;
-  sender: "me" | "other";
-  text: string;
-  time: string;
-};
-
-export default function ContatoScreen() {
-  // MOCKS INICIAIS
-  const currentUser = {
-    nome: "Herivelton",
-  };
-
-  const otherUser = {
-    nome: "Julia",
-    tipo: "Motorista",
-    origem: "FATEC Votorantim",
-    destino: "Campolim, Sorocaba",
-    horario: "18:20",
-    data: "Hoje",
-    veiculo: "Onix Prata",
-  };
-
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 1,
-      sender: "other",
-      text: "Oi, vi que você tem interesse nessa carona 😊",
-      time: "18:02",
-    },
-    {
-      id: 2,
-      sender: "me",
-      text: "Oi Julia! Tenho sim. Você sai da FATEC hoje?",
-      time: "18:03",
-    },
-    {
-      id: 3,
-      sender: "other",
-      text: "Saio sim, por volta das 18:20.",
-      time: "18:04",
-    },
-    {
-      id: 4,
-      sender: "me",
-      text: "Perfeito, esse horário funciona pra mim.",
-      time: "18:05",
-    },
-  ]);
-
-  const [input, setInput] = useState("");
-  const [rideStatus, setRideStatus] = useState<"pendente" | "aceita" | "recusada">("pendente");
-
-  // MOCK do pop-up de avaliação após novo login / retorno ao app
-  // Deixei como true para vocês visualizarem a ideia desde já
-  const [showRatingModal, setShowRatingModal] = useState(true);
-
-  const [selectedStars, setSelectedStars] = useState(0);
-  const [ratingComment, setRatingComment] = useState("");
-
-  const statusLabel = useMemo(() => {
-    if (rideStatus === "aceita") return "Carona aceita";
-    if (rideStatus === "recusada") return "Carona recusada";
-    return "Aguardando decisão";
-  }, [rideStatus]);
-
-  const statusColor = useMemo(() => {
-    if (rideStatus === "aceita") return "#16A34A";
-    if (rideStatus === "recusada") return "#DC2626";
-    return "#F59E0B";
-  }, [rideStatus]);
-
-  function getCurrentTime() {
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    return `${hh}:${mm}`;
-  }
-
-  function handleSendMessage() {
-    const trimmed = input.trim();
-    if (!trimmed) return;
-
-    const newMessage: Message = {
-      id: Date.now(),
-      sender: "me",
-      text: trimmed,
-      time: getCurrentTime(),
-    };
-
-    setMessages((prev) => [...prev, newMessage]);
-    setInput("");
-
-    // MOCK de resposta automática simples
-    setTimeout(() => {
-      const autoReply: Message = {
-        id: Date.now() + 1,
-        sender: "other",
-        text: "Perfeito! Depois integramos essa parte com o back do chat 🙂",
-        time: getCurrentTime(),
-      };
-      setMessages((prev) => [...prev, autoReply]);
-    }, 1000);
-  }
-
-  function handleAcceptRide() {
-    setRideStatus("aceita");
-    Alert.alert("Carona aceita", "A solicitação foi aceita com sucesso.");
-  }
-
-  function handleRejectRide() {
-    setRideStatus("recusada");
-    Alert.alert("Carona recusada", "A solicitação foi recusada.");
-  }
-
-  function handleSubmitRating() {
-    if (selectedStars === 0) {
-      Alert.alert("Avaliação incompleta", "Selecione pelo menos 1 estrela.");
-      return;
-    }
-
-    // Aqui depois você liga no back de avaliação que já existe
-    console.log("Avaliação enviada:", {
-      estrelas: selectedStars,
-      comentario: ratingComment,
-      avaliado: otherUser.nome,
-      avaliador: currentUser.nome,
-    });
-
-    Alert.alert("Obrigado!", "Sua avaliação da carona foi registrada.");
-    setShowRatingModal(false);
-    setSelectedStars(0);
-    setRatingComment("");
-  }
->>>>>>> origin
 
   function renderStars() {
     return (
@@ -1003,7 +858,6 @@ export default function ContatoScreen() {
     );
   }
 
-<<<<<<< HEAD
   function handleSubmitRating() {
     if (selectedStars === 0) {
       Alert.alert("Avaliação incompleta", "Selecione pelo menos 1 estrela.");
@@ -1050,15 +904,10 @@ export default function ContatoScreen() {
       style={styles.safeArea}
       edges={["top", "left", "right", "bottom"]}
     >
-=======
-  return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right", "bottom"]}>
->>>>>>> origin
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <KeyboardAvoidingView
         style={styles.keyboard}
-<<<<<<< HEAD
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 92 : 0}
       >
@@ -1090,29 +939,6 @@ export default function ContatoScreen() {
           </View>
         </View>
 
-=======
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        {/* HEADER */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{otherUser.nome.charAt(0)}</Text>
-            </View>
-
-            <View>
-              <Text style={styles.headerTitle}>{otherUser.nome}</Text>
-              <Text style={styles.headerSubtitle}>{otherUser.tipo}</Text>
-            </View>
-          </View>
-
-          <View style={[styles.statusBadge, { backgroundColor: `${statusColor}18` }]}>
-            <Text style={[styles.statusBadgeText, { color: statusColor }]}>{statusLabel}</Text>
-          </View>
-        </View>
-
-        {/* CARD DA CARONA */}
->>>>>>> origin
         <View style={styles.rideCard}>
           <View style={styles.rideCardTop}>
             <Text style={styles.rideCardTitle}>Detalhes da carona</Text>
@@ -1122,29 +948,20 @@ export default function ContatoScreen() {
           <View style={styles.infoRow}>
             <Ionicons name="location-outline" size={16} color="#64748B" />
             <Text style={styles.infoText}>
-<<<<<<< HEAD
               {detalhesViagemSelecionada.origem} →{" "}
               {detalhesViagemSelecionada.destino}
-=======
-              {otherUser.origem} → {otherUser.destino}
->>>>>>> origin
             </Text>
           </View>
 
           <View style={styles.infoRow}>
             <Ionicons name="time-outline" size={16} color="#64748B" />
             <Text style={styles.infoText}>
-<<<<<<< HEAD
               Entrada {detalhesViagemSelecionada.entrada} • Saída{" "}
               {detalhesViagemSelecionada.saida}
-=======
-              {otherUser.data} às {otherUser.horario}
->>>>>>> origin
             </Text>
           </View>
 
           <View style={styles.infoRow}>
-<<<<<<< HEAD
             <Ionicons name="cash-outline" size={16} color="#64748B" />
             <Text style={styles.infoText}>
               Ajuda de custo: R$ {detalhesViagemSelecionada.ajuda}
@@ -1490,106 +1307,6 @@ export default function ContatoScreen() {
           </View>
         </View>
 
-=======
-            <Ionicons name="car-outline" size={16} color="#64748B" />
-            <Text style={styles.infoText}>{otherUser.veiculo}</Text>
-          </View>
-        </View>
-
-        {/* ÁREA DO CHAT */}
-        <View style={styles.chatWrapper}>
-          <ScrollView
-            style={styles.messagesContainer}
-            contentContainerStyle={styles.messagesContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {messages.map((msg) => {
-              const isMe = msg.sender === "me";
-
-              return (
-                <View
-                  key={msg.id}
-                  style={[
-                    styles.messageRow,
-                    isMe ? styles.messageRowMe : styles.messageRowOther,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.messageBubble,
-                      isMe ? styles.messageBubbleMe : styles.messageBubbleOther,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.messageText,
-                        isMe ? styles.messageTextMe : styles.messageTextOther,
-                      ]}
-                    >
-                      {msg.text}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.messageTime,
-                        isMe ? styles.messageTimeMe : styles.messageTimeOther,
-                      ]}
-                    >
-                      {msg.time}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })}
-          </ScrollView>
-
-          {/* AÇÕES DA CARONA */}
-          <View style={styles.actionsContainer}>
-            <Pressable
-              style={[
-                styles.actionButton,
-                styles.acceptButton,
-                rideStatus === "aceita" && styles.disabledButton,
-              ]}
-              onPress={handleAcceptRide}
-              disabled={rideStatus === "aceita"}
-            >
-              <Ionicons name="checkmark-circle-outline" size={18} color="#FFFFFF" />
-              <Text style={styles.actionButtonText}>Aceitar carona</Text>
-            </Pressable>
-
-            <Pressable
-              style={[
-                styles.actionButton,
-                styles.rejectButton,
-                rideStatus === "recusada" && styles.disabledButton,
-              ]}
-              onPress={handleRejectRide}
-              disabled={rideStatus === "recusada"}
-            >
-              <Ionicons name="close-circle-outline" size={18} color="#FFFFFF" />
-              <Text style={styles.actionButtonText}>Recusar carona</Text>
-            </Pressable>
-          </View>
-
-          {/* INPUT DO CHAT */}
-          <View style={styles.inputWrapper}>
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder="Digite sua mensagem..."
-              placeholderTextColor="#94A3B8"
-              style={styles.input}
-              multiline
-            />
-
-            <Pressable style={styles.sendButton} onPress={handleSendMessage}>
-              <Ionicons name="send" size={20} color="#FFFFFF" />
-            </Pressable>
-          </View>
-        </View>
-
-        {/* MODAL DE AVALIAÇÃO */}
->>>>>>> origin
         <Modal
           visible={showRatingModal}
           animationType="fade"
@@ -1604,13 +1321,8 @@ export default function ContatoScreen() {
 
               <Text style={styles.modalTitle}>Avaliar carona</Text>
               <Text style={styles.modalSubtitle}>
-<<<<<<< HEAD
                 Sua carona com <Text style={styles.bold}>{outroNome}</Text> foi
                 realizada? Conte como foi a experiência.
-=======
-                Sua carona com <Text style={styles.bold}>{otherUser.nome}</Text> foi realizada?
-                Conte como foi a experiência.
->>>>>>> origin
               </Text>
 
               {renderStars()}
@@ -1636,13 +1348,9 @@ export default function ContatoScreen() {
                   style={[styles.modalBtn, styles.modalBtnPrimary]}
                   onPress={handleSubmitRating}
                 >
-<<<<<<< HEAD
                   <Text style={styles.modalBtnPrimaryText}>
                     Enviar avaliação
                   </Text>
-=======
-                  <Text style={styles.modalBtnPrimaryText}>Enviar avaliação</Text>
->>>>>>> origin
                 </Pressable>
               </View>
             </View>
@@ -1664,7 +1372,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#F4F6FA",
   },
 
-<<<<<<< HEAD
   loadingWrap: {
     flex: 1,
     backgroundColor: "#F4F6FA",
@@ -1679,8 +1386,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-=======
->>>>>>> origin
   header: {
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 16,
@@ -1691,10 +1396,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-<<<<<<< HEAD
     gap: 12,
-=======
->>>>>>> origin
   },
 
   headerLeft: {
@@ -1702,15 +1404,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     flex: 1,
-<<<<<<< HEAD
     paddingRight: 8,
   },
 
   headerTextWrap: {
     flex: 1,
-=======
-    paddingRight: 12,
->>>>>>> origin
   },
 
   avatar: {
@@ -1722,7 +1420,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-<<<<<<< HEAD
   avatarImage: {
     width: 48,
     height: 48,
@@ -1730,8 +1427,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#DBEAFE",
   },
 
-=======
->>>>>>> origin
   avatarText: {
     fontSize: 20,
     fontWeight: "800",
@@ -1798,7 +1493,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-<<<<<<< HEAD
   bodyRow: {
     flex: 1,
     flexDirection: "row",
@@ -1957,12 +1651,6 @@ const styles = StyleSheet.create({
   messagesLoadingText: {
     color: "#64748B",
     fontSize: 14,
-=======
-  chatWrapper: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
->>>>>>> origin
   },
 
   messagesContainer: {
@@ -1970,7 +1658,6 @@ const styles = StyleSheet.create({
   },
 
   messagesContent: {
-<<<<<<< HEAD
     padding: 12,
     gap: 10,
   },
@@ -1989,12 +1676,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-=======
-    paddingVertical: 8,
-    gap: 10,
-  },
-
->>>>>>> origin
   messageRow: {
     width: "100%",
     flexDirection: "row",
@@ -2009,11 +1690,7 @@ const styles = StyleSheet.create({
   },
 
   messageBubble: {
-<<<<<<< HEAD
     maxWidth: "82%",
-=======
-    maxWidth: "80%",
->>>>>>> origin
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -2059,7 +1736,6 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
 
-<<<<<<< HEAD
   chatBottomArea: {
     paddingTop: 6,
     flexShrink: 0,
@@ -2068,12 +1744,6 @@ const styles = StyleSheet.create({
   actionsContainer: {
     flexDirection: "row",
     gap: 10,
-=======
-  actionsContainer: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 6,
->>>>>>> origin
     marginBottom: 10,
   },
 
@@ -2096,20 +1766,12 @@ const styles = StyleSheet.create({
   },
 
   disabledButton: {
-<<<<<<< HEAD
     opacity: 0.65,
-=======
-    opacity: 0.7,
->>>>>>> origin
   },
 
   actionButtonText: {
     color: "#FFFFFF",
-<<<<<<< HEAD
     fontSize: 13,
-=======
-    fontSize: 14,
->>>>>>> origin
     fontWeight: "700",
   },
 
@@ -2125,13 +1787,10 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
 
-<<<<<<< HEAD
   inputWrapperDisabled: {
     backgroundColor: "#F8FAFC",
   },
 
-=======
->>>>>>> origin
   input: {
     flex: 1,
     minHeight: 44,
